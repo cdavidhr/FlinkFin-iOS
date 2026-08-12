@@ -2,6 +2,9 @@
 
 This document describes the internal architecture of the FlinkFin iOS app in detail.
 
+> **Language note:** This document and the main README are written in English for GitHub readability.
+> All **inline source code comments** and **`CHANGELOG.md` entries** are intentionally written in **Spanish** — this matches the companion Python dashboard project and the convention established in `AGENTS.md`.
+
 ## High-Level Flow
 
 ```

@@ -272,10 +272,11 @@ For assets without analyst coverage (ETFs, small caps):
 This is a personal project. Bug reports and suggestions are welcome via GitHub Issues. Pull requests are welcome but please open an issue first to discuss significant changes.
 
 **Code conventions:**
-- Comments in Spanish (matches the original project convention)
-- Logic in sync with the Python dashboard — if you change `PortfolioEngine.swift`, update `compute_holdings()` in the dashboard too, and log both changes in their respective `CHANGELOG.md`
-- Never write to the Google Sheet from this app
-- Never store credentials outside the Keychain
+- **Code comments and `CHANGELOG.md` entries are written in Spanish.** This matches the companion Python dashboard project and the AI agent instructions (`AGENTS.md`). If you add a comment or a changelog entry, write it in Spanish.
+- **Public documentation (this README, `docs/ARCHITECTURE.md`) is in English** so it is accessible to a wider audience on GitHub.
+- Logic must stay in sync with the Python dashboard — if you change `PortfolioEngine.swift`, update `compute_holdings()` in the dashboard too, and log both changes in their respective `CHANGELOG.md`.
+- Never write to the Google Sheet from this app.
+- Never store credentials outside the Keychain.
 
 ---
 

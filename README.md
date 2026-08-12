@@ -2,7 +2,7 @@
 
 A native SwiftUI app that mirrors a financial portfolio dashboard on iPhone/iPad. It connects **directly** to Google Sheets and Yahoo Finance from the device — no intermediate server or backend required.
 
-> **Status**: actively maintained. The code compiles and runs on iOS 17+. Some advanced chart views (annual breakdown, treemap) are planned but not yet implemented.
+> **Status**: actively maintained. Compiles and runs on iOS 17+. Some advanced chart views (annual breakdown, treemap) are planned but not yet implemented.
 
 ---
 
@@ -16,21 +16,23 @@ A native SwiftUI app that mirrors a financial portfolio dashboard on iPhone/iPad
 6. [Security & Privacy](#security--privacy)
 7. [Data Sources](#data-sources)
 8. [Recommendation Engine](#recommendation-engine)
-9. [Known Limitations](#known-limitations)
-10. [Contributing](#contributing)
+9. [Localization & Languages](#localization--languages)
+10. [Known Limitations](#known-limitations)
+11. [Contributing](#contributing)
 
 ---
 
 ## Features
 
-- **5 tabs**: Overview, Holdings, Performance, Recommendations, Transactions
+- **5 main tabs**: Overview, Holdings, Performance, Recommendations, Transactions
+- **In-app language switcher (English / Spanish)**: Toggle app language at runtime from Settings (⚙️) with instant UI update and `@AppStorage` persistence
 - **Real-time prices** via Yahoo Finance (unofficial chart endpoint — same as `yfinance`)
-- **Portfolio history** charted over 1D / 5D / 1M / 6M / 1Y / All
-- **Multi-currency support**: SGD, USD, HKD, AUD with live FX rates
+- **Portfolio history & intraday charts** (1D / 5D / 1M / 3M / 6M / 1Y / 2Y / All)
+- **Multi-currency support**: SGD, USD, HKD, AUD with live FX rates and display currency conversion (S$ / €)
 - **Analyst price targets** via TradingView Scanner API (free, no key required), with Yahoo Finance and Finviz as fallbacks
-- **Buy / Hold / Take Profit recommendations** based purely on market valuation — not on your personal P&L
+- **Buy / Hold / Take Profit recommendations** based purely on market valuation — not on personal P&L
 - **No third-party dependencies** — JWT signing uses Apple's `Security.framework` directly
-- **Credentials stored in Keychain** — the Google Service Account JSON never touches disk unencrypted
+- **Credentials stored in Keychain** — Google Service Account JSON never touches disk unencrypted
 
 ---
 
@@ -40,6 +42,7 @@ A native SwiftUI app that mirrors a financial portfolio dashboard on iPhone/iPad
 ┌─────────────────────────────────────────────────────────────┐
 │                        SwiftUI Views                        │
 │  OverviewView  HoldingsView  PerformanceView  Recs  Txns   │
+│                 (connected to LanguageManager)              │
 └────────────────────────┬────────────────────────────────────┘
                          │ @StateObject / @EnvironmentObject
                          ▼
@@ -77,8 +80,9 @@ A native SwiftUI app that mirrors a financial portfolio dashboard on iPhone/iPad
 
 | Decision | Rationale |
 |---|---|
-| **Native SwiftUI, no WKWebView** | Full native experience, better performance |
-| **No FastAPI backend dependency** | The app works standalone; reads Sheets + Yahoo directly |
+| **Native SwiftUI, no WKWebView** | Full native performance, smooth animations, native iOS feel |
+| **No FastAPI backend dependency** | Standalone operation; reads Sheets + Yahoo directly from device |
+| **In-app language switcher** | Dynamic runtime toggle between English and Spanish without requiring device reboot/restart |
 | **No SPM packages** | JWT signing done with `Security.framework` to avoid third-party dependencies for credential-sensitive code |
 | **Keychain for credentials** | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — credentials never stored on disk or in `UserDefaults` |
 | **Read-only against Google Sheets** | The app never writes to the spreadsheet |
@@ -89,31 +93,40 @@ A native SwiftUI app that mirrors a financial portfolio dashboard on iPhone/iPad
 
 ```
 FlinkFin/
-├── FlinkFinApp.swift              # App entry point, onboarding gate
+├── FlinkFinApp.swift              # App entry point, onboarding gate & language provider
+│
+├── Localizations/                 # In-app localization engine
+│   ├── LanguageManager.swift      # ObservableObject with @AppStorage("appLanguage")
+│   ├── Strings+en.swift           # English string dictionary
+│   └── Strings+es.swift           # Spanish string dictionary
 │
 ├── Models/
-│   ├── Transaction.swift          # Single buy/sell record
+│   ├── Transaction.swift          # Single buy/sell/dividend record
 │   ├── Holding.swift              # Aggregated position (ticker + metrics)
 │   └── HistoryPoint.swift         # Portfolio value at a point in time
 │
 ├── Engine/
-│   ├── PortfolioEngine.swift      # compute_holdings(): txns → holdings
-│   ├── RecommendationEngine.swift # recommend(): holdings → signals
-│   └── PortfolioStore.swift       # @MainActor ObservableObject, async refresh
+│   ├── Formatters.swift           # Shared numeric, currency, and percentage formatting
+│   ├── PortfolioEngine.swift      # computeHoldings(): transactions → holdings
+│   ├── RecommendationEngine.swift # recommend(): holdings → localized signals & factors
+│   └── PortfolioStore.swift       # @MainActor ObservableObject, async refresh & state
 │
 ├── Networking/
-│   ├── GoogleSheetsClient.swift   # Sheets API v4 client
+│   ├── GoogleSheetsClient.swift   # Sheets API v4 client (JWT auth)
 │   ├── YahooFinanceClient.swift   # Prices, FX, sparklines, analyst targets
 │   ├── JWTSigner.swift            # RS256 JWT for Google OAuth2
 │   └── SecureCredentialStore.swift# Keychain wrapper
 │
 └── Views/
+    ├── Components/
+    │   └── MiniLineChart.swift    # Sparkline chart component
     ├── OnboardingCredentialsView.swift
     ├── OverviewView.swift
     ├── HoldingsView.swift
     ├── PerformanceView.swift
     ├── RecommendationsView.swift
-    └── TransactionsView.swift
+    ├── TransactionsView.swift
+    └── SettingsView.swift         # Language selector sheet
 ```
 
 ### Module Mapping (iOS ↔ Python dashboard)
@@ -125,6 +138,7 @@ FlinkFin/
 | `Engine/PortfolioEngine.swift` | `compute_holdings()` in database.py |
 | `Engine/RecommendationEngine.swift` | `recommend()` in dashboard_server.py |
 | `Engine/PortfolioStore.swift` | `build_portfolio_data()` in dashboard_server.py |
+| `Localizations/LanguageManager.swift` | *(iOS exclusive — in-app EN/ES language switcher)* |
 | `Networking/GoogleSheetsClient.swift` | gsheets_sync.py + `_import_*` functions |
 | `Networking/JWTSigner.swift` | google-auth Python package |
 | `Networking/YahooFinanceClient.swift` | `_fetch_fx_live` / `_fetch_prices_live` / `_fetch_sparklines_live` |
@@ -157,7 +171,7 @@ xcodegen generate
 open FlinkFin.xcodeproj
 ```
 
-**Option B — Manual**: Open Xcode → File → Open → select the `FlinkFin.xcodeproj` that was generated.
+**Option B — Manual**: Open Xcode → File → Open → select `FlinkFin.xcodeproj`.
 
 ### 2. Sign the app
 
@@ -187,7 +201,8 @@ Press **⌘R** (or the ▶ button) to build and run on your device or simulator.
 | Data | Where | Notes |
 |---|---|---|
 | Service account JSON | iOS **Keychain** | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — device-specific, not iCloud-synced |
-| Spreadsheet ID | `UserDefaults` | Not sensitive — it is visible in the Google Sheets URL |
+| Spreadsheet ID | `UserDefaults` | Visible in the Google Sheets URL bar |
+| Language preference | `UserDefaults` (`@AppStorage`) | `"en"` or `"es"` string |
 | Prices / portfolio data | **In-memory only** | Never written to disk |
 
 ### What is NOT in this repository
@@ -195,11 +210,7 @@ Press **⌘R** (or the ▶ button) to build and run on your device or simulator.
 - No API keys, tokens, or secrets of any kind
 - No real financial data (holdings, transactions, balances)
 - No personal information
-- The `.gitignore` explicitly excludes `service_account*.json` and `*serviceaccount*.json`
-
-### Google Sheets access
-
-The app is **read-only** against Google Sheets. The service account must only have **Viewer** permission on your spreadsheet — it will never write, edit, or delete data.
+- The `.gitignore` explicitly excludes `service_account*.json`, `*serviceaccount*.json`, `*.pem`, `*.key`
 
 ---
 
@@ -207,24 +218,20 @@ The app is **read-only** against Google Sheets. The service account must only ha
 
 ### Prices & FX Rates
 - **Yahoo Finance** unofficial chart endpoint: `query1.finance.yahoo.com/v8/finance/chart/{ticker}`
-- Same endpoint used by the Python `yfinance` library
-- FX pairs: `USDSGD=X`, `HKDSGD=X`, `AUDSGD=X`
+- FX pairs: `USDSGD=X`, `HKDSGD=X`, `AUDSGD=X`, `EURSGD=X`
 - Fallback static rates if network is unavailable
 
 ### Analyst Price Targets & Ratings
 
 Three-tier fallback chain (all free, no API key required):
 
-1. **TradingView Scanner API** (`scanner.tradingview.com/global/scan`) — Primary source. Single batch POST request for all tickers. Supports global exchanges: NASDAQ, NYSE, SGX, LSE, ASX.
-2. **Yahoo Finance `quoteSummary`** with crumb+cookie authentication — Secondary. Requires a session cookie seeded via `fc.yahoo.com`.
+1. **TradingView Scanner API** (`scanner.tradingview.com/global/scan`) — Primary source. Single batch POST request for all tickers. Supports global exchanges: NASDAQ, NYSE, SGX, LSE, ASX, etc.
+2. **Yahoo Finance `quoteSummary`** with crumb+cookie authentication — Secondary.
 3. **Finviz** HTML scraping — Tertiary, US tickers only.
 
-> **ETFs** (e.g. VWRA.L) do not have analyst price targets on any platform — sell-side analysts cover companies, not index funds. The recommendation engine uses a fallback scoring path for ETFs.
-
 ### Portfolio Data
-- **Google Sheets** via the Sheets API v4
-- Authentication: RS256 JWT signed with `Security.framework` → exchanged for an OAuth2 access token
-- Read-only: transactions sheet, history sheet, and any configured ranges
+- **Google Sheets** via Sheets API v4 (RS256 JWT signed with `Security.framework`)
+- Read-only access to transactions and portfolio history sheets
 
 ---
 
@@ -246,34 +253,38 @@ Signal thresholds:
   ≥ 4  → STRONG BUY  🟢
   ≥ 2  → BUY         🟩
    0–1 → HOLD        🟡
-  < 0  → TAKE PROFIT 🔴
+  < 0  → TAKE PROFIT RED 🔴
 ```
 
-For assets without analyst coverage (ETFs, small caps):
-- A positive `recommendationKey` alone generates a BUY/STRONG BUY
-- Otherwise defaults to HOLD
+---
+
+## Localization & Languages
+
+The app includes built-in support for **English** and **Spanish**:
+
+- **Dynamic switching**: Tap the gear icon (⚙️) on the Overview screen to open Settings and select your preferred language. All tab titles, section headers, badges, button labels, and recommendation factor descriptions update instantly without restarting the app.
+- **Persistence**: Your selection is remembered across sessions via `@AppStorage("appLanguage")`.
+- **String Architecture**: Localized strings are stored in `Strings+en.swift` and `Strings+es.swift` and resolved through `LanguageManager.shared`.
 
 ---
 
 ## Known Limitations
 
-1. **`JWTSigner.swift`** — manually unpacks PKCS#8 DER to PKCS#1 RSA for `SecKeyCreateSignature`. Standard logic but tested against a limited set of service account keys. If Google login fails, check here first.
-
-2. **Yahoo Finance endpoint** — unofficial; Yahoo can block requests without notice (same issue as `yfinance` in Python). If prices stop arriving, try changing the User-Agent or adding retries.
-
-3. **`GoogleSheetsClient.fetchPortfolioHistory()`** — intentionally replicates a row-skip discrepancy from the Python dashboard (1 vs 2 header rows). See comment in the source file. Do not "fix" unilaterally without verifying the spreadsheet structure.
-
-4. **Pending charts** — Annual breakdown table, currency allocation donut, top-10 bar chart, and concentration treemap are not yet implemented. All can be derived from data already exposed by `PortfolioStore` without any networking changes.
+1. **`JWTSigner.swift`** — manually unpacks PKCS#8 DER to PKCS#1 RSA for `SecKeyCreateSignature`.
+2. **Yahoo Finance endpoint** — unofficial endpoint; if Yahoo changes headers/response formats, pricing updates may require adjustments.
+3. **`GoogleSheetsClient.fetchPortfolioHistory()`** — intentionally replicates a row-skip discrepancy from the Python dashboard (1 vs 2 header rows).
+4. **Pending charts** — Annual breakdown table, currency allocation donut, top-10 bar chart, and concentration treemap are planned for future releases.
 
 ---
 
 ## Contributing
 
-This is a personal project. Bug reports and suggestions are welcome via GitHub Issues. Pull requests are welcome but please open an issue first to discuss significant changes.
+This is a personal project. Bug reports and suggestions are welcome via GitHub Issues.
 
 **Code conventions:**
-- **Code comments and `CHANGELOG.md` entries are written in Spanish.** This matches the companion Python dashboard project and the AI agent instructions (`AGENTS.md`). If you add a comment or a changelog entry, write it in Spanish.
-- **Public documentation (this README, `docs/ARCHITECTURE.md`) is in English** so it is accessible to a wider audience on GitHub.
+- **All Swift source code comments are written in English.**
+- **Public documentation (`README.md`, `docs/ARCHITECTURE.md`) and `AGENTS.md` instructions are in English.**
+- **Session history entries in `CHANGELOG.md` are kept in Spanish** (matching the companion Python dashboard project).
 - Logic must stay in sync with the Python dashboard — if you change `PortfolioEngine.swift`, update `compute_holdings()` in the dashboard too, and log both changes in their respective `CHANGELOG.md`.
 - Never write to the Google Sheet from this app.
 - Never store credentials outside the Keychain.

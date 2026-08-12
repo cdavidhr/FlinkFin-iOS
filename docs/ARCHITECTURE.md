@@ -7,6 +7,8 @@ This document describes the internal architecture of the FlinkFin iOS app in det
 
 ## High-Level Flow
 
+![FlinkFin Visual Architecture Diagram](images/app_architecture_visual.jpg)
+
 ```
 App Launch
     │

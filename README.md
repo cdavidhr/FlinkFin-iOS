@@ -38,6 +38,8 @@ A native SwiftUI app that mirrors a financial portfolio dashboard on iPhone/iPad
 
 ## Architecture Overview
 
+![FlinkFin Visual Architecture Diagram](docs/images/app_architecture_visual.jpg)
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        SwiftUI Views                        │
@@ -279,7 +281,9 @@ The app includes built-in support for **English** and **Spanish**:
 
 ## Contributing
 
-This is a personal project. Bug reports and suggestions are welcome via GitHub Issues.
+We welcome community participation! Whether you want to add new chart components, improve localization, or enhance analytics, please read our **[Contributor Guide (CONTRIBUTING.md)](CONTRIBUTING.md)** for a visual walkthrough of the architecture, workflow, and open roadmap items.
+
+Bug reports and feature suggestions are welcome via GitHub Issues.
 
 **Code conventions:**
 - **All Swift source code comments are written in English.**

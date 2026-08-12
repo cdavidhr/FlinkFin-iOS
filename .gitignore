@@ -1,0 +1,65 @@
+# ─── Xcode ──────────────────────────────────────────────────────────────────
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+DerivedData/
+.build/
+*.moved-aside
+.swiftpm/
+
+# The .xcodeproj is regenerated from project.yml with XcodeGen.
+# Don't version it to avoid pbxproj merge conflicts.
+*.xcodeproj/
+
+# ─── macOS ──────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ─── Credentials & Secrets ──────────────────────────────────────────────────
+# Google Service Account — NEVER commit. The app imports this once via the
+# file picker and stores it in the iOS Keychain (SecureCredentialStore.swift).
+credentials/
+service_account*.json
+*serviceaccount*.json
+*_service_account.json
+*.p12
+*.pem
+*.key
+*.cer
+*.mobileprovision
+*.provisionprofile
+
+# Environment variable files
+.env
+.env.*
+*.env
+
+# Any token or secret files that may land during development
+secrets/
+*.secret
+*_token.txt
+
+# ─── Swift / SPM ────────────────────────────────────────────────────────────
+.build/
+*.o
+*.d
+Package.resolved
+
+# ─── IDE / Editor ───────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Test artifacts ─────────────────────────────────────────────────────────
+*.xcresult
+
+# ─── Logs ───────────────────────────────────────────────────────────────────
+*.log
+
+# ─── Icon source exports (regenerated from Assets.xcassets) ─────────────────
+icons/_extracted/
+icons/*.zip

@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Pestaña "Recomendaciones" — vista enriquecida con tarjetas de KPI,
-/// filtros interactivos por señal, rango de objetivos de analistas y
-/// desglose visual de razones por posición.
+/// "Recommendations" tab — feature-rich view with signal KPI summary chips,
+/// signal filter, analyst target range indicators, and breakdown of reason factors.
 struct RecommendationsView: View {
     @EnvironmentObject private var store: PortfolioStore
+    @EnvironmentObject private var lm: LanguageManager
     @State private var selectedSignalFilter: RecommendationSignal? = nil
 
     private static let signalsOrder: [RecommendationSignal] = [.strongBuy, .buy, .hold, .takeProfit]
@@ -17,7 +17,6 @@ struct RecommendationsView: View {
         if let filter = selectedSignalFilter {
             return groupedHoldings[filter] ?? []
         } else {
-            // Devuelve todas las posiciones ordenadas por prioridad de señal
             return store.holdings.sorted { h1, h2 in
                 let s1 = store.recommendations[h1.id]?.signal ?? .notAvailable
                 let s2 = store.recommendations[h2.id]?.signal ?? .notAvailable
@@ -44,9 +43,9 @@ struct RecommendationsView: View {
 
                     if filteredHoldings.isEmpty {
                         ContentUnavailableView(
-                            "Sin recomendaciones",
+                            lm["rec.empty"],
                             systemImage: "line.3.horizontal.decrease.circle",
-                            description: Text("No hay posiciones con la señal seleccionada.")
+                            description: Text(lm["rec.empty.hint"])
                         )
                         .frame(height: 220)
                     } else {
@@ -64,7 +63,7 @@ struct RecommendationsView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Recomendaciones")
+            .navigationTitle(lm["rec.title"])
             .refreshable { await store.refresh() }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -78,18 +77,17 @@ struct RecommendationsView: View {
         }
     }
 
-    // MARK: - Tarjetas resumen superior (Filtros)
+    // MARK: - Overview Filter Chips
 
     private var overviewKPISection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Resumen de Señales")
+            Text(lm["rec.signal_summary"])
                 .font(.headline)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    // Botón "Todas"
                     filterChip(
-                        title: "Todas",
+                        title: lm["rec.filter.all"],
                         count: store.holdings.count,
                         isSelected: selectedSignalFilter == nil,
                         color: .primary
@@ -102,7 +100,7 @@ struct RecommendationsView: View {
                     ForEach(Self.signalsOrder, id: \.self) { signal in
                         let count = (groupedHoldings[signal] ?? []).count
                         filterChip(
-                            title: signal.rawValue,
+                            title: localizedSignalTitle(signal),
                             count: count,
                             isSelected: selectedSignalFilter == signal,
                             color: signalColor(signal)
@@ -114,6 +112,16 @@ struct RecommendationsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func localizedSignalTitle(_ signal: RecommendationSignal) -> String {
+        switch signal {
+        case .strongBuy:    return lm["rec.signal.strong_buy"]
+        case .buy:          return lm["rec.signal.buy"]
+        case .hold:         return lm["rec.signal.hold"]
+        case .takeProfit:   return lm["rec.signal.take_profit"]
+        case .notAvailable: return lm["rec.signal.na"]
         }
     }
 
@@ -155,7 +163,7 @@ struct RecommendationsView: View {
             Image(systemName: "info.circle.fill")
                 .foregroundStyle(.secondary)
                 .font(.subheadline)
-            Text("Análisis automatizado basado en precios objetivo de analistas, rentabilidad latente de tu posición, dividendo y métricas de salud financiera. **No constituye asesoramiento financiero.**")
+            Text(lm["rec.disclaimer"])
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -164,10 +172,11 @@ struct RecommendationsView: View {
     }
 }
 
-// MARK: - Tarjeta de Recomendación por Posición
+// MARK: - Recommendation Card for Holding
 
 private struct RecommendationCard: View {
     @EnvironmentObject private var store: PortfolioStore
+    @EnvironmentObject private var lm: LanguageManager
     let holding: Holding
     let recommendation: Recommendation?
 
@@ -182,7 +191,7 @@ private struct RecommendationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Encabezado
+            // Header
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
@@ -210,11 +219,11 @@ private struct RecommendationCard: View {
 
             Divider()
 
-            // Métricas Clave
+            // Key Metrics
             HStack(spacing: 16) {
-                // Precio Actual & Rendimiento
+                // Current Price & Performance
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Precio actual")
+                    Text(lm["rec.current_price"])
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
@@ -223,7 +232,7 @@ private struct RecommendationCard: View {
                             Text(Fmt.money(price, currency: holding.currency))
                                 .font(.subheadline.weight(.semibold))
                         } else {
-                            Text("n/d")
+                            Text(lm["rec.signal.na"])
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -238,9 +247,9 @@ private struct RecommendationCard: View {
 
                 Spacer()
 
-                // Precio Objetivo de Analistas
+                // Analyst Target Price
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("Objetivo Analistas")
+                    Text(lm["rec.analyst_target"])
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
@@ -259,14 +268,14 @@ private struct RecommendationCard: View {
                             }
                         }
                     } else {
-                        Text("Sin objetivo")
+                        Text(lm["rec.no_target"])
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
 
-            // Rango de Precio Objetivo (si está disponible)
+            // Target Price Range (if available)
             if let minT = holding.minTarget, let maxT = holding.maxTarget, let price = holding.livePrice, maxT > minT {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -295,10 +304,10 @@ private struct RecommendationCard: View {
                 }
             }
 
-            // Razones / Factores
+            // Reasons / Factors
             if let reasons = recommendation?.reasons, !reasons.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Factores clave:")
+                    Text(lm["rec.key_factors"])
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.top, 4)
@@ -328,5 +337,7 @@ private struct RecommendationCard: View {
 }
 
 #Preview {
-    RecommendationsView().environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+    RecommendationsView()
+        .environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+        .environmentObject(LanguageManager.shared)
 }

@@ -1,22 +1,16 @@
 import SwiftUI
 import Charts
 
-/// Pestaña "Posiciones" — lista de posiciones con tarjeta expandible al tap.
-/// Al expandirse, carga datos fundamentales de Yahoo Finance (quoteSummary)
-/// de forma diferida y los almacena en caché durante la sesión.
+/// "Holdings" tab — list of positions with expandable detail card on tap.
+/// On expansion, lazily fetches fundamental market data from Yahoo Finance
+/// (quoteSummary) and caches it for the session.
 struct HoldingsView: View {
     @EnvironmentObject private var store: PortfolioStore
+    @EnvironmentObject private var lm: LanguageManager
     @State private var currencyFilter: String = "all"
-    @State private var sortOption: SortOption = .value
-    /// Caché de datos fundamentales por ticker — se rellena bajo demanda.
+    @State private var sortOptionKey: String = "holdings.sort.by_value"
+    /// Cache for fundamental quote data per ticker.
     @State private var quoteCache: [String: StockQuote] = [:]
-
-    enum SortOption: String, CaseIterable, Identifiable {
-        case value = "Por valor (SGD)"
-        case glPct = "Por G/L %"
-        case name = "Por nombre"
-        var id: String { rawValue }
-    }
 
     private var currencies: [String] {
         Array(Set(store.holdings.map(\.currency))).sorted()
@@ -27,10 +21,10 @@ struct HoldingsView: View {
         if currencyFilter != "all" {
             list = list.filter { $0.currency == currencyFilter }
         }
-        switch sortOption {
-        case .value: list.sort { ($0.liveValueSGD ?? 0) > ($1.liveValueSGD ?? 0) }
-        case .glPct: list.sort { ($0.liveGLPct ?? 0) > ($1.liveGLPct ?? 0) }
-        case .name:  list.sort { $0.name < $1.name }
+        switch sortOptionKey {
+        case "holdings.sort.by_gl":   list.sort { ($0.liveGLPct ?? 0) > ($1.liveGLPct ?? 0) }
+        case "holdings.sort.by_name": list.sort { $0.name < $1.name }
+        default:                      list.sort { ($0.liveValueSGD ?? 0) > ($1.liveValueSGD ?? 0) }
         }
         return list
     }
@@ -57,14 +51,14 @@ struct HoldingsView: View {
                 .overlay {
                     if store.holdings.isEmpty && !store.isLoading {
                         ContentUnavailableView(
-                            "Sin posiciones",
+                            lm["holdings.empty"],
                             systemImage: "briefcase",
-                            description: Text("Actualiza desde la pestaña Resumen para cargar el portfolio.")
+                            description: Text(lm["holdings.empty.hint"])
                         )
                     }
                 }
             }
-            .navigationTitle("Posiciones")
+            .navigationTitle(lm["holdings.title"])
             .refreshable { await store.refresh() }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -82,15 +76,17 @@ struct HoldingsView: View {
         VStack(spacing: 10) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
-                    filterChip("Todas", isSelected: currencyFilter == "all") { currencyFilter = "all" }
+                    filterChip(lm["holdings.filter.all"], isSelected: currencyFilter == "all") { currencyFilter = "all" }
                     ForEach(currencies, id: \.self) { ccy in
                         filterChip(ccy, isSelected: currencyFilter == ccy) { currencyFilter = ccy }
                     }
                 }
                 .padding(.horizontal)
             }
-            Picker("Ordenar", selection: $sortOption) {
-                ForEach(SortOption.allCases) { Text($0.rawValue).tag($0) }
+            Picker(lm["holdings.sort"], selection: $sortOptionKey) {
+                Text(lm["holdings.sort.by_value"]).tag("holdings.sort.by_value")
+                Text(lm["holdings.sort.by_gl"]).tag("holdings.sort.by_gl")
+                Text(lm["holdings.sort.by_name"]).tag("holdings.sort.by_name")
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
@@ -111,7 +107,7 @@ struct HoldingsView: View {
     }
 }
 
-// MARK: - Tarjeta expandible
+// MARK: - Expandable Card
 
 private struct HoldingCard: View {
     let holding: Holding
@@ -175,10 +171,11 @@ private struct HoldingCard: View {
     }
 }
 
-// MARK: - Contenido de la fila principal
+// MARK: - Main Row Content
 
 private struct HoldingRowContent: View {
     @EnvironmentObject private var store: PortfolioStore
+    @EnvironmentObject private var lm: LanguageManager
     let holding: Holding
     let recommendation: Recommendation?
     let isExpanded: Bool
@@ -198,14 +195,14 @@ private struct HoldingRowContent: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 4) {
-                    Text("\(Fmt.units(holding.units)) ud · \(Fmt.money(holding.livePrice ?? holding.cpu ?? 0, currency: holding.currency))/ud")
+                    Text("\(Fmt.units(holding.units)) \(lm["holdings.units"]) · \(Fmt.money(holding.livePrice ?? holding.cpu ?? 0, currency: holding.currency))/\(lm["holdings.units"])")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     if holding.priceIsLive == false {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .imageScale(.small)
                             .foregroundStyle(.orange)
-                            .accessibilityLabel("Precio estimado, no en vivo")
+                            .accessibilityLabel(lm["holdings.estimated_price"])
                     }
                 }
                 if let signal = recommendation?.signal, signal != .notAvailable {
@@ -218,7 +215,6 @@ private struct HoldingRowContent: View {
                     MiniLineChart(values: sparkline, color: (holding.liveGLSGD ?? 0) >= 0 ? .green : .red)
                         .frame(width: 70, height: 32)
                 }
-                // Valor de mercado en la moneda de presentación seleccionada
                 Text(Fmt.money(store.toDisplay(holding.liveValueSGD ?? 0), currency: store.displayCode))
                     .font(.subheadline.weight(.semibold))
                     .contentTransition(.numericText())
@@ -235,10 +231,11 @@ private struct HoldingRowContent: View {
     }
 }
 
-// MARK: - Panel de detalle expandido
+// MARK: - Expanded Detail Panel
 
 private struct HoldingDetailPanel: View {
     @EnvironmentObject private var store: PortfolioStore
+    @EnvironmentObject private var lm: LanguageManager
     let holding: Holding
     let quote: StockQuote?
     let isLoading: Bool
@@ -250,7 +247,7 @@ private struct HoldingDetailPanel: View {
             if isLoading {
                 HStack {
                     Spacer()
-                    ProgressView("Cargando datos de mercado…")
+                    ProgressView(lm["holdings.loading"])
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -260,8 +257,8 @@ private struct HoldingDetailPanel: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Label(
                         holding.ticker.isEmpty
-                            ? "Sin ticker — no hay datos de mercado disponibles."
-                            : "No se pudieron cargar datos de Yahoo Finance.",
+                            ? lm["holdings.no_ticker"]
+                            : lm["holdings.load_failed"],
                         systemImage: "exclamationmark.triangle"
                     )
                     .font(.caption)
@@ -286,23 +283,22 @@ private struct HoldingDetailPanel: View {
     @ViewBuilder
     private func marketDataSection(_ q: StockQuote) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Datos de mercado", systemImage: "chart.bar.xaxis")
+            Label(lm["holdings.market_data"], systemImage: "chart.bar.xaxis")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            // Solo mostrar las celdas que tienen dato real — evitar rejilla llena de "n/d"
             let stats: [(String, String)] = [
-                q.trailingPE  .map { ("P/E (TTM)", Fmt.ratio($0)) },
-                q.forwardPE   .map { ("P/E (FWD)", Fmt.ratio($0)) },
-                q.beta        .map { ("Beta",      String(format: "%.2f", $0)) },
-                q.trailingEps .map { ("EPS",       Fmt.money($0, currency: holding.currency)) },
-                q.priceToBook .map { ("P/Book",    Fmt.ratio($0)) },
-                q.dividendYield.map { ("Div. yield", Fmt.pct($0)) },
-                q.grossMargins .map { ("Mg. bruto",  Fmt.pct($0)) },
-                q.profitMargins.map { ("Mg. neto",   Fmt.pct($0)) },
-                q.roe          .map { ("ROE",         Fmt.pct($0)) },
-                q.volume       .map { ("Volumen",     Fmt.compact($0)) },
-                q.marketCap    .map { ("Cap. mercado", Fmt.compact($0)) },
+                q.trailingPE  .map { (lm["holdings.pe_ttm"], Fmt.ratio($0)) },
+                q.forwardPE   .map { (lm["holdings.pe_fwd"], Fmt.ratio($0)) },
+                q.beta        .map { ("Beta",               String(format: "%.2f", $0)) },
+                q.trailingEps .map { ("EPS",                Fmt.money($0, currency: holding.currency)) },
+                q.priceToBook .map { ("P/Book",             Fmt.ratio($0)) },
+                q.dividendYield.map { ("Div. yield",        Fmt.pct($0)) },
+                q.grossMargins .map { (lm["holdings.gross_margin"], Fmt.pct($0)) },
+                q.profitMargins.map { (lm["holdings.net_margin"],   Fmt.pct($0)) },
+                q.roe          .map { ("ROE",                Fmt.pct($0)) },
+                q.volume       .map { (lm["holdings.volume"],       Fmt.compact($0)) },
+                q.marketCap    .map { (lm["holdings.market_cap"],   Fmt.compact($0)) },
             ].compactMap { $0 }
 
             if !stats.isEmpty {
@@ -316,7 +312,6 @@ private struct HoldingDetailPanel: View {
                 }
             }
 
-            // Barra de rango 52 semanas — siempre visible si hay dato
             if let low = q.fiftyTwoWeekLow, let high = q.fiftyTwoWeekHigh, high > low {
                 rangeBar(low: low, high: high, current: holding.livePrice, currency: holding.currency)
             }
@@ -327,7 +322,7 @@ private struct HoldingDetailPanel: View {
         let fraction = current.map { min(max(($0 - low) / (high - low), 0), 1) }
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Rango 52 semanas").font(.caption2).foregroundStyle(.secondary)
+                Text(lm["holdings.week52"]).font(.caption2).foregroundStyle(.secondary)
                 Spacer()
                 if let c = current {
                     Text(Fmt.money(c, currency: currency))
@@ -365,20 +360,18 @@ private struct HoldingDetailPanel: View {
 
     private var myPositionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Mi posición", systemImage: "person.fill")
+            Label(lm["holdings.my_position"], systemImage: "person.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             let cpu = holding.cpu ?? 0
-            // Valores por unidad en moneda nativa del holding (no se convierten)
-            // Valores totales en SGD se convierten a la moneda de presentación
             let stats: [(String, String)] = [
-                ("Coste medio/ud", Fmt.money(cpu, currency: holding.currency)),
-                ("Coste total",    Fmt.money(holding.cost, currency: holding.currency)),
-                ("G/L realizada",  Fmt.money(store.toDisplay(holding.realizedGL * (holding.fxRate ?? 1)), currency: store.displayCode)),
-                ("Dividendos tot", Fmt.money(store.toDisplay(holding.dividends  * (holding.fxRate ?? 1)), currency: store.displayCode)),
-                ("Divid. (TTM)",   Fmt.money(store.toDisplay(holding.dividendsTTM * (holding.fxRate ?? 1)), currency: store.displayCode)),
-                ("Desde",          holding.firstDate),
+                (lm["holdings.avg_cost"],      Fmt.money(cpu, currency: holding.currency)),
+                (lm["holdings.total_cost"],    Fmt.money(holding.cost, currency: holding.currency)),
+                (lm["holdings.realized_gl"],   Fmt.money(store.toDisplay(holding.realizedGL * (holding.fxRate ?? 1)), currency: store.displayCode)),
+                (lm["holdings.dividends"],     Fmt.money(store.toDisplay(holding.dividends  * (holding.fxRate ?? 1)), currency: store.displayCode)),
+                (lm["holdings.dividends_ttm"], Fmt.money(store.toDisplay(holding.dividendsTTM * (holding.fxRate ?? 1)), currency: store.displayCode)),
+                (lm["holdings.since"],         holding.firstDate),
             ]
             LazyVGrid(
                 columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
@@ -392,11 +385,11 @@ private struct HoldingDetailPanel: View {
             if let avg = holding.avgTarget {
                 HStack(spacing: 8) {
                     if let mn = holding.minTarget {
-                        miniStatCell("Obj. mín.", Fmt.money(mn, currency: holding.currency))
+                        miniStatCell(lm["holdings.target.min"], Fmt.money(mn, currency: holding.currency))
                     }
-                    miniStatCell("Obj. medio", Fmt.money(avg, currency: holding.currency))
+                    miniStatCell(lm["holdings.target.avg"], Fmt.money(avg, currency: holding.currency))
                     if let mx = holding.maxTarget {
-                        miniStatCell("Obj. máx.", Fmt.money(mx, currency: holding.currency))
+                        miniStatCell(lm["holdings.target.max"], Fmt.money(mx, currency: holding.currency))
                     }
                 }
             }
@@ -423,6 +416,7 @@ private struct HoldingDetailPanel: View {
 // MARK: - SignalBadge
 
 struct SignalBadge: View {
+    @EnvironmentObject private var lm: LanguageManager
     let signal: RecommendationSignal
 
     private var config: (color: Color, icon: String) {
@@ -435,11 +429,21 @@ struct SignalBadge: View {
         }
     }
 
+    private var signalText: String {
+        switch signal {
+        case .strongBuy:    return lm["rec.signal.strong_buy"]
+        case .buy:          return lm["rec.signal.buy"]
+        case .hold:         return lm["rec.signal.hold"]
+        case .takeProfit:   return lm["rec.signal.take_profit"]
+        case .notAvailable: return lm["rec.signal.na"]
+        }
+    }
+
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: config.icon)
                 .font(.system(size: 9, weight: .bold))
-            Text(signal.rawValue)
+            Text(signalText)
                 .font(.caption2.weight(.bold))
         }
         .padding(.horizontal, 8)
@@ -450,5 +454,7 @@ struct SignalBadge: View {
 }
 
 #Preview {
-    HoldingsView().environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+    HoldingsView()
+        .environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+        .environmentObject(LanguageManager.shared)
 }

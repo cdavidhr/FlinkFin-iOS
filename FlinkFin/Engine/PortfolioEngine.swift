@@ -1,14 +1,12 @@
 import Foundation
 
-/// Port directo de `compute_holdings()` (database.py, proyecto `dashboard`).
-/// Recorre el log de transacciones en orden cronológico y deriva, por cada
-/// valor (nombre + divisa), unidades, coste medio ponderado, ganancias
-/// realizadas y dividendos (con corte TTM a 12 meses) — el mismo enfoque que
-/// usa el backend Python. Si cambias la lógica aquí, cámbiala también allí
-/// (o viceversa) para no divergir; documentar en CHANGELOG.md.
+/// Direct Swift port of `compute_holdings()` (database.py, desktop dashboard).
+/// Replays the transaction ledger chronologically and calculates, per holding
+/// (name + currency), units, weighted average cost, realized G/L, and dividends
+/// (with 12-month TTM windowing) — matching the Python backend logic.
 enum PortfolioEngine {
 
-    /// Posición intermedia mientras se reproduce el ledger.
+    /// Intermediate position state while replaying the ledger.
     private struct WorkingPosition {
         var name: String
         var currency: String
@@ -23,20 +21,11 @@ enum PortfolioEngine {
     }
 
     /// - Parameters:
-    ///   - transactions: TODAS las transacciones (no es necesario que vengan
-    ///     pre-ordenadas; se ordenan aquí por fecha y luego por id, igual que
-    ///     `ORDER BY date ASC, id ASC` en SQL).
-    ///   - meta: metadatos por posición (categoría, precios objetivo) — keyed
-    ///     por `"\(name)|\(currency)"`, espejo de `stock_meta`.
-    ///   - asOf: solo afecta el corte TTM de dividendos (12 meses hacia atrás
-    ///     desde esta fecha), igual que `today` en `compute_holdings()`
-    ///     (database.py). **No filtra transacciones por fecha** — ni aquí ni
-    ///     en el Python se excluyen filas con fecha futura; `compute_holdings()`
-    ///     suma TODO lo que hay en la tabla/hoja sin importar la fecha. Antes
-    ///     esta función sí excluía transacciones posteriores a `asOf`, lo que
-    ///     causó una posición (PLTR) con 40 unidades menos que la web cuando
-    ///     el usuario tenía una compra fechada en el futuro — corregido
-    ///     2026-06-25, ver CHANGELOG.md.
+    ///   - transactions: ALL transactions (they are sorted here by date and id,
+    ///     matching `ORDER BY date ASC, id ASC` in SQL).
+    ///   - meta: Metadata per position (category, target prices) keyed by `"\(name)|\(currency)"`.
+    ///   - asOf: Only affects TTM dividend cutoff (12 months backward from this date),
+    ///     matching `today` in `compute_holdings()` (database.py). Does NOT filter transactions by date.
     static func computeHoldings(
         transactions: [Transaction],
         meta: [String: StockMeta] = [:],
@@ -54,7 +43,6 @@ enum PortfolioEngine {
         var pos: [String: WorkingPosition] = [:]
 
         for tx in sorted {
-            // Sin filtro de fecha aquí — ver doc del método arriba.
             let key = tx.positionKey
             var p = pos[key] ?? WorkingPosition(
                 name: tx.name, currency: tx.currency, ticker: tx.ticker,
@@ -89,11 +77,6 @@ enum PortfolioEngine {
 
         var out: [Holding] = []
         for (key, p) in pos {
-            // Umbral igual que `compute_holdings()` en Python (database.py):
-            // `if p["units"] < 0.1: continue`. Filtra posiciones casi cerradas
-            // con unidades residuales de redondeo que Python también descarta.
-            // El umbral anterior (1e-9) era demasiado permisivo e incluía esas
-            // posiciones en el total, causando discrepancia con la web.
             guard p.units >= 0.1 else { continue }
             let m = meta[key]
             let cpu = p.units > 0 ? p.cost / p.units : nil
@@ -112,17 +95,7 @@ enum PortfolioEngine {
                 minTarget: m?.minTarget,
                 maxTarget: m?.maxTarget,
                 firstDate: p.firstDate,
-                lastDate: p.lastDate,
-                livePrice: nil,
-                fxRate: nil,
-                sparkline: nil,
-                recommendationKey: nil,
-                epsTrailing: nil,
-                epsForward: nil,
-                returnOnEquity: nil,
-                profitMargins: nil,
-                revenueGrowth: nil,
-                debtToEquity: nil
+                lastDate: p.lastDate
             ))
         }
         return out
@@ -136,7 +109,7 @@ enum PortfolioEngine {
     }
 }
 
-/// Espejo de la tabla `stock_meta` (database.py).
+/// Mirror of `stock_meta` table (database.py).
 struct StockMeta: Codable {
     var ticker: String?
     var category: String?

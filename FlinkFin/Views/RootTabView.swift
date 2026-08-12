@@ -1,34 +1,33 @@
 import SwiftUI
 
-/// Punto de entrada de la UI — 5 pestañas, mismo reparto que
-/// templates/index.html (Resumen/Posiciones/Rendimiento/Recomendaciones/
-/// Transacciones). `store` se crea una vez aquí y se pasa como
-/// `@EnvironmentObject` al resto del árbol.
+/// UI entry point — 5 tabs matching templates/index.html (Overview / Holdings /
+/// Performance / Recommendations / Transactions). `store` is created in FlinkFinApp
+/// and passed down along with `LanguageManager`.
 struct RootTabView: View {
-    @StateObject private var store: PortfolioStore
-
-    init(store: PortfolioStore) {
-        _store = StateObject(wrappedValue: store)
-    }
+    @EnvironmentObject private var store: PortfolioStore
+    @EnvironmentObject private var lm: LanguageManager
+    @State private var showSettings = false
 
     var body: some View {
         TabView {
             OverviewView()
-                .tabItem { Label("Resumen", systemImage: "chart.pie.fill") }
+                .tabItem { Label(lm["tab.overview"], systemImage: "chart.pie.fill") }
 
             HoldingsView()
-                .tabItem { Label("Posiciones", systemImage: "briefcase.fill") }
+                .tabItem { Label(lm["tab.holdings"], systemImage: "briefcase.fill") }
 
             PerformanceView()
-                .tabItem { Label("Rendimiento", systemImage: "chart.line.uptrend.xyaxis") }
+                .tabItem { Label(lm["tab.performance"], systemImage: "chart.line.uptrend.xyaxis") }
 
             RecommendationsView()
-                .tabItem { Label("Recomendaciones", systemImage: "lightbulb.fill") }
+                .tabItem { Label(lm["tab.recommendations"], systemImage: "lightbulb.fill") }
 
             TransactionsView()
-                .tabItem { Label("Transacciones", systemImage: "list.bullet.rectangle") }
+                .tabItem { Label(lm["tab.transactions"], systemImage: "list.bullet.rectangle") }
         }
-        .environmentObject(store)
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
         .task {
             await store.refresh()
             await store.refreshHistory()

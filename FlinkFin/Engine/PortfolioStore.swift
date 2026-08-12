@@ -1,8 +1,8 @@
 import Foundation
 
-/// Moneda de presentación de toda la app.
-/// Todos los valores internos se calculan en SGD; este enum controla
-/// si la UI los muestra en SGD o los convierte a EUR en tiempo real.
+/// Display currency for the app UI.
+/// Internal metrics are calculated in SGD; this enum controls whether
+/// the UI renders them in SGD or converts to EUR in real time.
 enum DisplayCurrency: String, CaseIterable {
     case sgd = "SGD"
     case eur = "EUR"
@@ -15,9 +15,8 @@ enum DisplayCurrency: String, CaseIterable {
     }
 }
 
-/// Orquestador @MainActor que junta Sheets + Yahoo + los motores
-/// (PortfolioEngine/RecommendationEngine) en estado publicado para SwiftUI —
-/// el mismo papel que `build_portfolio_data()` en dashboard_server.py.
+/// @MainActor orchestrator uniting Sheets + Yahoo + engines (PortfolioEngine/RecommendationEngine)
+/// into published state for SwiftUI — mirroring `build_portfolio_data()` in dashboard_server.py.
 @MainActor
 final class PortfolioStore: ObservableObject {
 
@@ -31,35 +30,26 @@ final class PortfolioStore: ObservableObject {
     @Published private(set) var isLoadingIntradayHistory = false
     @Published private(set) var fx: [String: Double] = YahooFinanceClient.fallbackFXRates
     @Published private(set) var lastUpdated: Date?
-    /// Número de filas duplicadas eliminadas en la última llamada a refresh().
-    /// 0 si no hubo duplicados o si aún no se ha hecho refresh.
+    /// Number of duplicate rows removed in last refresh(). 0 if none.
     @Published private(set) var duplicatesFoundOnLastRefresh: Int = 0
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
-    /// Rentabilidad por ticker en el periodo seleccionado en PerformanceView.
-    /// Clave: ticker Yahoo · Valor: variación fraccional (0.15 = +15%).
-    /// Se actualiza con `fetchPeriodReturns(days:)` — no se rellena en refresh()
-    /// para no retrasar la carga inicial.
+    /// Ticker returns over period selected in PerformanceView.
     @Published private(set) var periodReturns: [String: Double] = [:]
     @Published private(set) var isLoadingPeriodReturns = false
-    /// Variación del valor total del portfolio desde el cierre del día anterior
-    /// hasta el momento de refresh, en SGD. nil si no hay datos suficientes.
+    /// Change in total portfolio value from previous close in SGD.
     @Published private(set) var dailyChangeValueSGD: Double? = nil
-    /// Variación porcentual respecto al valor de cierre del día anterior. nil si no hay datos.
+    /// Percentage change relative to previous close.
     @Published private(set) var dailyChangePct: Double? = nil
 
-    /// Moneda de presentación seleccionada por el usuario.
-    /// Cambiarla actualiza automáticamente todas las vistas via @EnvironmentObject.
+    /// User-selected display currency.
     @Published var displayCurrency: DisplayCurrency = .sgd
 
-    /// Tasa de cambio SGD → EUR (cuántos EUR vale 1 SGD).
-    /// Se obtiene de EURSGD=X invirtiendo la tasa: 1 / EURSGD_rate.
-    /// Fallback: 1 EUR ≈ 1.45 SGD  →  1 SGD ≈ 0.689 EUR.
+    /// SGD → EUR exchange rate.
     @Published private(set) var sgdToEurRate: Double = 1.0 / 1.45
 
-    // MARK: - Conversión de moneda de presentación
+    // MARK: - Display Currency Conversion
 
-    /// Convierte un valor en SGD a la moneda de presentación activa.
     func toDisplay(_ sgdAmount: Double) -> Double {
         switch displayCurrency {
         case .sgd: return sgdAmount
@@ -67,9 +57,7 @@ final class PortfolioStore: ObservableObject {
         }
     }
 
-    /// Código ISO de la moneda de presentación activa (para Fmt.money).
     var displayCode: String { displayCurrency.rawValue }
-
 
     private let sheets: GoogleSheetsClient
 
@@ -77,10 +65,8 @@ final class PortfolioStore: ObservableObject {
         self.sheets = sheets
     }
 
-    /// Recarga transacciones + metadatos desde Sheets, recalcula posiciones,
-    /// pide precios/FX/sparklines en vivo a Yahoo, y genera recomendaciones.
-    /// Pensado para llamarse al abrir la app y desde un botón "Actualizar"
-    /// (no hay caché de servidor aquí — cada llamada pega a las dos APIs).
+    /// Reloads transactions + metadata from Sheets, recomputes holdings,
+    /// fetches live prices/FX/sparklines from Yahoo, and builds recommendations.
     func refresh() async {
         isLoading = true
         errorMessage = nil
@@ -98,12 +84,9 @@ final class PortfolioStore: ObservableObject {
             let tickers = baseHoldings.compactMap { $0.ticker.isEmpty ? nil : $0.ticker }
 
             async let fxRates = YahooFinanceClient.fetchFXRates()
-            // fetchPricesAndPrevClose descarga la misma serie 5d/1d pero devuelve
-            // también el penúltimo cierre (= sesión anterior) sin red extra.
             async let pricesResult = YahooFinanceClient.fetchPricesAndPrevClose(tickers: tickers)
             async let sparks = YahooFinanceClient.fetchSparklines(tickers: tickers)
             async let targets = YahooFinanceClient.fetchAnalystTargets(tickers: tickers)
-            // EURSGD=X: cuántos SGD vale 1 EUR → invertimos para tener SGD→EUR
             async let eursgdSeries = YahooFinanceClient.fetchCloseSeries(
                 symbol: "EURSGD=X", range: "5d", interval: "1d"
             )
@@ -131,7 +114,6 @@ final class PortfolioStore: ObservableObject {
                         h.recommendationKey = key
                     }
                 }
-                // Igual que `price_use = live or r["cpu"] or 0` en build_portfolio_data:
                 if let live = resolvedPrices[h.ticker] {
                     h.livePrice = live
                     h.priceIsLive = true
@@ -139,7 +121,6 @@ final class PortfolioStore: ObservableObject {
                     h.livePrice = h.cpu ?? 0
                     h.priceIsLive = false
                 }
-                // Acumular valor de cierre anterior para calcular variación diaria
                 if let prev = resolvedPrevClose[h.ticker], let fx = h.fxRate {
                     prevValueSGD += prev * h.units * fx
                     prevDataCount += 1
@@ -157,7 +138,6 @@ final class PortfolioStore: ObservableObject {
             self.byCurrency = Self.computeBreakdown(enriched)
             self.lastUpdated = Date()
 
-            // Variación diaria: solo si al menos la mitad de posiciones tienen dato prev
             if prevDataCount > 0 && prevValueSGD > 0 {
                 let currentSGD = totalsResult.valueSGD
                 self.dailyChangeValueSGD = currentSGD - prevValueSGD
@@ -167,31 +147,21 @@ final class PortfolioStore: ObservableObject {
                 self.dailyChangePct = nil
             }
         } catch {
-            errorMessage = "No se pudieron cargar los datos: \(error.localizedDescription)"
+            errorMessage = error.localizedDescription
         }
     }
 
-    /// Carga aparte el histórico de patrimonio total (pestaña Rendimiento) —
-    /// igual que /api/history es un endpoint separado de /api/portfolio.
+    /// Fetches total portfolio history for Performance tab.
     func refreshHistory() async {
         do {
             self.history = try await sheets.fetchPortfolioHistory().sorted { $0.date < $1.date }
         } catch {
-            errorMessage = "No se pudo cargar el histórico: \(error.localizedDescription)"
+            errorMessage = error.localizedDescription
         }
     }
 
-    // MARK: - Rentabilidades por periodo (para Top/Bottom 5 en PerformanceView)
+    // MARK: - Period Returns (Top/Bottom 5 in PerformanceView)
 
-    /// Descarga el histórico de precios de cada posición y calcula la variación
-    /// en el periodo `days` (los mismos periodos que el gráfico de rendimiento).
-    ///
-    /// - Parameter days: número de días de ventana. 9999 = desde el primer dato
-    ///   disponible (equivale al botón "Todo").
-    ///
-    /// Usa el endpoint `v8/finance/chart` con `range=1y` y corta los datos
-    /// al periodo pedido — si `days > 365` o days == 9999 pide `range=5y`.
-    /// Las peticiones son concurrentes (una por ticker).
     func fetchPeriodReturns(days: Int) async {
         let tickers = holdings.compactMap { $0.ticker.isEmpty ? nil : $0.ticker }
         guard !tickers.isEmpty else { return }
@@ -220,7 +190,6 @@ final class PortfolioStore: ObservableObject {
                           let http = resp as? HTTPURLResponse, http.statusCode == 200
                     else { return (ticker, nil) }
 
-                    // Decodificado mínimo: solo necesitamos los cierres ajustados
                     struct CR: Decodable {
                         struct C: Decodable { let result: [R]? }
                         struct R: Decodable {
@@ -246,7 +215,6 @@ final class PortfolioStore: ObservableObject {
                         closes = (r.indicators.quote.first?.close ?? []).compactMap { $0 }
                     }
 
-                    // Cortar al periodo pedido usando los timestamps
                     let cutoff: [Double]
                     if days >= 9999 {
                         cutoff = closes
@@ -255,7 +223,6 @@ final class PortfolioStore: ObservableObject {
                         let paired = zip(ts, closes).filter { Double($0.0) >= cutoffEpoch }.map { $0.1 }
                         cutoff = paired
                     } else {
-                        // Sin timestamps: tomar los últimos `days` puntos (aprox)
                         let n = min(days, closes.count)
                         cutoff = Array(closes.suffix(n))
                     }
@@ -275,11 +242,8 @@ final class PortfolioStore: ObservableObject {
         self.periodReturns = result
     }
 
-    // MARK: - Histórico Intradía Sintético (1D / 5D)
+    // MARK: - Synthetic Intraday History (1D / 5D)
 
-    /// Calcula un histórico sintético para periodos muy cortos (1 día o 5 días)
-    /// obteniendo datos intradiarios de Yahoo Finance (cada 5m o 15m) y sumándolos,
-    /// asumiendo que las posiciones y el efectivo actual se han mantenido constantes.
     func fetchIntradayHistory(days: Int) async {
         guard days == 1 || days == 5 else { return }
 
@@ -353,7 +317,6 @@ final class PortfolioStore: ObservableObject {
             }
         }
 
-        // Agrupar todos los timestamps únicos ordenados
         let allTS = Set(seriesByHolding.values.flatMap { $0.map { $0.ts } }).sorted()
 
         var currentIndexes = [String: Int]()
@@ -369,12 +332,10 @@ final class PortfolioStore: ObservableObject {
             var sumSGD: Double = 0
             for (ticker, series) in seriesByHolding {
                 var idx = currentIndexes[ticker]!
-                // Avanzar el índice hasta el timestamp actual o el más cercano anterior
                 while idx < series.count - 1 && series[idx + 1].ts <= ts {
                     idx += 1
                 }
                 currentIndexes[ticker] = idx
-                // Sumar el valor si el punto es válido para este momento
                 if series[idx].ts <= ts {
                     sumSGD += series[idx].val
                 }
@@ -398,7 +359,7 @@ final class PortfolioStore: ObservableObject {
         }
     }
 
-    // MARK: - Agregados (espejo de build_portfolio_data)
+    // MARK: - Aggregates
 
     private static func computeTotals(_ holdings: [Holding]) -> PortfolioTotals {
         let value = holdings.reduce(0) { $0 + ($1.liveValueSGD ?? 0) }
@@ -424,4 +385,3 @@ final class PortfolioStore: ObservableObject {
         return byCurrency.values.sorted { $0.currency < $1.currency }
     }
 }
-

@@ -1,16 +1,13 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Pantalla única que se muestra mientras no haya credenciales guardadas en
-/// el Keychain. El usuario importa el mismo `service_account.json` que ya
-/// usa el backend Python (credentials/service_account.json en el proyecto
-/// `dashboard`) — vía el selector de archivos de iOS, NO pegando texto a
-/// mano (más fácil y evita errores de copy-paste con una clave RSA larga).
-/// El JSON se guarda en Keychain y nunca toca disco sin cifrar ni el
-/// bundle de la app.
+/// Onboarding screen presented when no credentials are found in Keychain.
+/// Allows the user to import their Google service account `service_account.json`
+/// via the iOS file picker and save it securely in Keychain.
 struct OnboardingCredentialsView: View {
     var onSaved: () -> Void
 
+    @EnvironmentObject private var lm: LanguageManager
     @State private var spreadsheetId: String = SecureCredentialStore.spreadsheetID
     @State private var isImporting = false
     @State private var errorMessage: String?
@@ -20,24 +17,24 @@ struct OnboardingCredentialsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Importa el JSON de la cuenta de servicio de Google que comparte acceso de lectura a tu Google Sheet de portfolio. Es el mismo fichero que usa el dashboard de escritorio (credentials/service_account.json).")
+                    Text(lm["onboarding.description"])
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
 
-                Section("Cuenta de servicio") {
+                Section(lm["onboarding.service_acct"]) {
                     Button {
                         isImporting = true
                     } label: {
-                        Label(importedEmail ?? "Importar service_account.json", systemImage: "doc.badge.plus")
+                        Label(importedEmail ?? lm["onboarding.import_btn"], systemImage: "doc.badge.plus")
                     }
                     if let email = importedEmail {
                         Text(email).font(.caption).foregroundStyle(.secondary)
                     }
                 }
 
-                Section("ID de la hoja de cálculo") {
-                    TextField("ID del Google Sheet", text: $spreadsheetId)
+                Section(lm["onboarding.sheet_label"]) {
+                    TextField(lm["onboarding.sheet_ph"], text: $spreadsheetId)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 }
@@ -48,7 +45,7 @@ struct OnboardingCredentialsView: View {
                     }
                 }
             }
-            .navigationTitle("Conectar Google Sheets")
+            .navigationTitle(lm["onboarding.title"])
             .fileImporter(isPresented: $isImporting, allowedContentTypes: [.json]) { result in
                 handleImport(result)
             }
@@ -72,11 +69,12 @@ struct OnboardingCredentialsView: View {
             errorMessage = nil
             onSaved()
         } catch {
-            errorMessage = "No se pudo leer el fichero: \(error.localizedDescription)"
+            errorMessage = lm.fmt("onboarding.file_error", error.localizedDescription)
         }
     }
 }
 
 #Preview {
     OnboardingCredentialsView(onSaved: {})
+        .environmentObject(LanguageManager.shared)
 }

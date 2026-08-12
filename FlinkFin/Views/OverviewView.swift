@@ -1,13 +1,13 @@
 import SwiftUI
 import Charts
 
-/// Pestaña "Resumen" — espejo de #tab-overview en templates/index.html:
-/// hero con valor total + gráfico de evolución, KPIs, desglose por divisa.
+/// "Overview" tab — mirrors #tab-overview in templates/index.html:
+/// hero with total value + evolution chart, key metrics, currency breakdown.
 struct OverviewView: View {
     @EnvironmentObject private var store: PortfolioStore
-    /// Controla si el banner de duplicados está cerrado por el usuario.
-    /// Se resetea automáticamente cuando el siguiente refresh encuentra duplicados.
+    @EnvironmentObject private var lm: LanguageManager
     @State private var duplicatesBannerDismissed = false
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -22,7 +22,7 @@ struct OverviewView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Resumen")
+            .navigationTitle(lm["overview.title"])
             .refreshable {
                 duplicatesBannerDismissed = false
                 await store.refresh()
@@ -32,6 +32,13 @@ struct OverviewView: View {
                 duplicatesBannerDismissed = false
             }
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Image("AppLogoSmall")
                         .resizable()
@@ -40,19 +47,22 @@ struct OverviewView: View {
                         .accessibilityHidden(true)
                 }
             }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+            }
             .overlay {
                 if store.isLoading && store.holdings.isEmpty {
-                    ProgressView("Cargando…")
+                    ProgressView(lm["overview.loading"])
                 } else if !store.isLoading && store.holdings.isEmpty && store.lastUpdated != nil {
                     ContentUnavailableView(
-                        "Sin datos",
+                        lm["overview.no_data"],
                         systemImage: "chart.pie",
-                        description: Text("Pulsa el botón ↻ para cargar el portfolio desde Google Sheets.")
+                        description: Text(lm["overview.no_data.hint"])
                     )
                 }
             }
-            .alert("Error", isPresented: errorBinding) {
-                Button("OK", role: .cancel) {}
+            .alert(lm["overview.error"], isPresented: errorBinding) {
+                Button(lm["overview.ok"], role: .cancel) {}
             } message: {
                 Text(store.errorMessage ?? "")
             }
@@ -68,28 +78,27 @@ struct OverviewView: View {
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Valor total del portfolio")
+                Text(lm["overview.portfolio_value"])
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                // Selector S$ / € — cambia la moneda de presentación de toda la app
+                // Currency picker (S$ / €) — updates display currency across the app
                 currencyPicker
             }
 
             Text(Fmt.money(store.toDisplay(store.totals?.valueSGD ?? 0), currency: store.displayCode))
-                // HIG: .largeTitle + fontDesign escala con Dynamic Type
                 .font(.largeTitle.weight(.bold))
                 .fontDesign(.rounded)
                 .contentTransition(.numericText())
                 .animation(.easeInOut(duration: 0.25), value: store.displayCurrency)
 
-            // Variación desde el cierre del día anterior
+            // Daily change from previous day's close
             if let dayChange = store.dailyChangeValueSGD, let dayPct = store.dailyChangePct {
                 HStack(spacing: 4) {
                     Image(systemName: "clock.arrow.circlepath")
                         .imageScale(.small)
-                    Text("Hoy")
-                    Text(" ") // espacio fino
+                    Text(lm["overview.today"])
+                    Text(" ") // thin space
                     Image(systemName: dayChange >= 0 ? "arrow.up" : "arrow.down")
                         .imageScale(.small)
                     Text(Fmt.money(store.toDisplay(abs(dayChange)), currency: store.displayCode))
@@ -103,9 +112,9 @@ struct OverviewView: View {
             }
             if !store.history.isEmpty {
                 Chart(store.history) { point in
-                    LineMark(x: .value("Fecha", point.date), y: .value("Valor", point.value))
+                    LineMark(x: .value("Date", point.date), y: .value("Value", point.value))
                         .interpolationMethod(.monotone)
-                    AreaMark(x: .value("Fecha", point.date), y: .value("Valor", point.value))
+                    AreaMark(x: .value("Date", point.date), y: .value("Value", point.value))
                         .interpolationMethod(.monotone)
                         .foregroundStyle(.linearGradient(colors: [.accentColor.opacity(0.25), .clear], startPoint: .top, endPoint: .bottom))
                 }
@@ -117,7 +126,7 @@ struct OverviewView: View {
                 HStack(spacing: 3) {
                     Image(systemName: "clock")
                     Text(updated, style: .relative)
-                    Text("ago")
+                    Text(lm["overview.ago"])
                 }
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
@@ -128,7 +137,7 @@ struct OverviewView: View {
         .background(RoundedRectangle(cornerRadius: 16).fill(.thinMaterial))
     }
 
-    /// Selector S$ / € con aspecto de píldoras, estilo HIG.
+    /// Segmented picker for S$ / € display currency.
     private var currencyPicker: some View {
         HStack(spacing: 0) {
             ForEach(DisplayCurrency.allCases, id: \.self) { ccy in
@@ -166,14 +175,14 @@ struct OverviewView: View {
     private var kpiGrid: some View {
         let totals = store.totals
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Métricas clave").font(.headline)
+            Text(lm["overview.key_metrics"]).font(.headline)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                kpiCard("Coste total",
+                kpiCard(lm["overview.total_cost"],
                         Fmt.money(store.toDisplay(totals?.costSGD ?? 0), currency: store.displayCode))
-                kpiCard("G/L no realizada",
+                kpiCard(lm["overview.unrealized_gl"],
                         Fmt.money(store.toDisplay(totals?.glSGD ?? 0), currency: store.displayCode))
-                kpiCard("Rentabilidad", Fmt.pct(totals?.glPct ?? 0, signed: true))
-                kpiCard("Posiciones", "\(store.holdings.count)")
+                kpiCard(lm["overview.return"], Fmt.pct(totals?.glPct ?? 0, signed: true))
+                kpiCard(lm["overview.holdings_count"], "\(store.holdings.count)")
             }
         }
     }
@@ -191,11 +200,11 @@ struct OverviewView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(.thinMaterial))
     }
 
-    // MARK: - Distribución por divisa
+    // MARK: - Currency Breakdown
 
     private var currencyGrid: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Distribución por divisa").font(.headline)
+            Text(lm["overview.currency_alloc"]).font(.headline)
             ForEach(store.byCurrency, id: \.currency) { c in
                 HStack {
                     Text(c.currency).font(.subheadline.weight(.semibold))
@@ -214,13 +223,13 @@ struct OverviewView: View {
         }
     }
 
-    // MARK: - Banner duplicados
+    // MARK: - Duplicates Notice
 
     private var duplicatesNotice: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.yellow)
-            Text("Se filtraron \(store.duplicatesFoundOnLastRefresh) fila\(store.duplicatesFoundOnLastRefresh == 1 ? "" : "s") duplicada\(store.duplicatesFoundOnLastRefresh == 1 ? "" : "s") en el Sheet.")
+            Text(lm.fmt("overview.duplicates", store.duplicatesFoundOnLastRefresh))
                 .font(.caption)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button {
@@ -241,5 +250,7 @@ struct OverviewView: View {
 }
 
 #Preview {
-    OverviewView().environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+    OverviewView()
+        .environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+        .environmentObject(LanguageManager.shared)
 }

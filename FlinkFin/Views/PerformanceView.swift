@@ -1,16 +1,18 @@
 import SwiftUI
 import Charts
 
-/// Pestaña "Rendimiento" — espejo de #tab-performance: gráfico valor vs
-/// coste con selector de periodo, estadísticas del periodo visible,
-/// y ranking de las 5 posiciones que más han subido / bajado en el periodo.
+/// "Performance" tab — value vs cost chart with period selector, period stats,
+/// and top 5 / bottom 5 movers ranking.
 struct PerformanceView: View {
     @EnvironmentObject private var store: PortfolioStore
+    @EnvironmentObject private var lm: LanguageManager
     @State private var periodDays: Int = 365
 
-    private static let periods: [(label: String, days: Int)] = [
-        ("1D", 1), ("5D", 5), ("1M", 30), ("3M", 90), ("6M", 180), ("1A", 365), ("2A", 730), ("Todo", 9999),
-    ]
+    private var periods: [(label: String, days: Int)] {
+        [
+            ("1D", 1), ("5D", 5), ("1M", 30), ("3M", 90), ("6M", 180), ("1A", 365), ("2A", 730), (lm["performance.period.all"], 9999),
+        ]
+    }
 
     private var visiblePoints: [HistoryPoint] {
         if periodDays == 1 || periodDays == 5 {
@@ -23,7 +25,7 @@ struct PerformanceView: View {
         return store.history.filter { $0.date >= cutoffStr }
     }
 
-    /// Posiciones ordenadas por rentabilidad en el periodo, con datos disponibles.
+    /// Holdings sorted by performance over the period.
     private var rankedHoldings: [(holding: Holding, ret: Double)] {
         store.holdings.compactMap { h in
             guard !h.ticker.isEmpty, let ret = store.periodReturns[h.ticker] else { return nil }
@@ -44,7 +46,7 @@ struct PerformanceView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Rendimiento")
+            .navigationTitle(lm["performance.title"])
             .refreshable {
                 await store.refreshHistory()
                 await store.fetchPeriodReturns(days: periodDays)
@@ -61,7 +63,6 @@ struct PerformanceView: View {
                         .accessibilityHidden(true)
                 }
             }
-            // Al cambiar el periodo recargamos los retornos individuales y el intradía si aplica
             .onChange(of: periodDays) {
                 Task {
                     await store.fetchPeriodReturns(days: periodDays)
@@ -70,7 +71,6 @@ struct PerformanceView: View {
                     }
                 }
             }
-            // Al cargar la vista por primera vez (holdings ya disponibles)
             .task {
                 if !store.holdings.isEmpty && store.periodReturns.isEmpty {
                     await store.fetchPeriodReturns(days: periodDays)
@@ -82,25 +82,25 @@ struct PerformanceView: View {
         }
     }
 
-    // MARK: - Gráfico
+    // MARK: - Chart
 
     private var chartCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Valor del portfolio vs coste").font(.headline)
+                Text(lm["performance.chart_title"]).font(.headline)
                 Spacer()
             }
             periodPicker
             if visiblePoints.isEmpty {
-                ContentUnavailableView("Sin histórico todavía", systemImage: "chart.line.flattrend.xyaxis")
+                ContentUnavailableView(lm["performance.no_history"], systemImage: "chart.line.flattrend.xyaxis")
                     .frame(height: 200)
             } else {
                 Chart(visiblePoints) { point in
-                    LineMark(x: .value("Fecha", point.date), y: .value("Valor", store.toDisplay(point.value)))
-                        .foregroundStyle(by: .value("Serie", "Valor"))
+                    LineMark(x: .value("Date", point.date), y: .value("Value", store.toDisplay(point.value)))
+                        .foregroundStyle(by: .value("Series", "Value"))
                         .interpolationMethod(.monotone)
-                    LineMark(x: .value("Fecha", point.date), y: .value("Coste", store.toDisplay(point.cost)))
-                        .foregroundStyle(by: .value("Serie", "Coste"))
+                    LineMark(x: .value("Date", point.date), y: .value("Cost", store.toDisplay(point.cost)))
+                        .foregroundStyle(by: .value("Series", "Cost"))
                         .interpolationMethod(.monotone)
                 }
                 .chartXAxis(.hidden)
@@ -114,7 +114,7 @@ struct PerformanceView: View {
     private var periodPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack {
-                ForEach(Self.periods, id: \.days) { period in
+                ForEach(periods, id: \.days) { period in
                     Button(period.label) { periodDays = period.days }
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -127,7 +127,7 @@ struct PerformanceView: View {
         }
     }
 
-    // MARK: - Estadísticas del periodo
+    // MARK: - Period Stats
 
     @ViewBuilder
     private var statsRow: some View {
@@ -135,9 +135,9 @@ struct PerformanceView: View {
             let change = last.value - first.value
             let changePct = change / first.value
             HStack(spacing: 12) {
-                statCard("Inicio periodo", Fmt.money(store.toDisplay(first.value), currency: store.displayCode))
-                statCard("Actual",         Fmt.money(store.toDisplay(last.value),  currency: store.displayCode))
-                statCard("Variación",
+                statCard(lm["performance.period_start"], Fmt.money(store.toDisplay(first.value), currency: store.displayCode))
+                statCard(lm["performance.current"],      Fmt.money(store.toDisplay(last.value),  currency: store.displayCode))
+                statCard(lm["performance.change"],
                     "\(Fmt.money(store.toDisplay(change), currency: store.displayCode)) (\(Fmt.pct(changePct, signed: true)))")
             }
         }
@@ -147,9 +147,8 @@ struct PerformanceView: View {
 
     private var moversSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Cabecera de sección
             HStack {
-                Text("Mejores y peores del periodo")
+                Text(lm["performance.top_movers"])
                     .font(.headline)
                 Spacer()
                 if store.isLoadingPeriodReturns {
@@ -158,7 +157,7 @@ struct PerformanceView: View {
             }
 
             if store.periodReturns.isEmpty && !store.isLoadingPeriodReturns {
-                Text("Desliza hacia abajo para cargar.")
+                Text(lm["performance.pull_load"])
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if !rankedHoldings.isEmpty {
@@ -166,16 +165,14 @@ struct PerformanceView: View {
                 let bottom = Array(rankedHoldings.suffix(5).reversed())
 
                 HStack(alignment: .top, spacing: 12) {
-                    // Top 5 — mayores subidas
                     moverCard(
-                        title: "↑ Top 5",
+                        title: lm["performance.top5"],
                         color: .green,
                         icon: "arrow.up.circle.fill",
                         items: top
                     )
-                    // Bottom 5 — mayores caídas
                     moverCard(
-                        title: "↓ Bottom 5",
+                        title: lm["performance.bottom5"],
                         color: .red,
                         icon: "arrow.down.circle.fill",
                         items: bottom
@@ -245,5 +242,7 @@ struct PerformanceView: View {
 }
 
 #Preview {
-    PerformanceView().environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+    PerformanceView()
+        .environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+        .environmentObject(LanguageManager.shared)
 }

@@ -1,9 +1,8 @@
 import SwiftUI
 import Charts
 
-/// Sparkline minimalista (sin ejes ni etiquetas) — usado en las filas de
-/// Posiciones y en la cabecera de Resumen. Equivalente visual a los
-/// mini-gráficos Chart.js del dashboard web.
+/// Minimalist sparkline (no axes or labels) — used in Holdings rows and Overview header.
+/// Visual equivalent of the Chart.js mini-charts in the web dashboard.
 struct MiniLineChart: View {
     let values: [Double]
     var color: Color = .accentColor
@@ -14,7 +13,7 @@ struct MiniLineChart: View {
         } else {
             Chart {
                 ForEach(Array(values.enumerated()), id: \.offset) { index, value in
-                    LineMark(x: .value("idx", index), y: .value("valor", value))
+                    LineMark(x: .value("idx", index), y: .value("value", value))
                         .interpolationMethod(.monotone)
                         .lineStyle(StrokeStyle(lineWidth: 1.6))
                 }

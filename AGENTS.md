@@ -71,7 +71,7 @@ en iOS. Ver `README.md` de esta carpeta para cómo compilarla y arrancarla.
    verificado.
 6. Documentar cambios en `CHANGELOG.md` (de esta carpeta).
 
-## Idioma
+## Language
 
-Comunicación con el usuario en español, respuestas concisas. Comentarios
-de código en español, igual que en el proyecto `dashboard`.
+User communication in Spanish, concise answers. Source code comments and
+documentation are written in English.

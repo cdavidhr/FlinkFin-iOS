@@ -1,33 +1,27 @@
 import Foundation
 
-/// Cliente de la API de Google Sheets v4 que lee y parsea las mismas
-/// pestañas que `gsheets_sync.py` + `database.py` (proyecto `dashboard`)
-/// procesan en el backend Python — reimplementado aquí porque esta app usa
-/// lógica independiente (no llama al servidor FastAPI).
+/// Google Sheets API v4 client that reads and parses the same tabs as
+/// `gsheets_sync.py` + `database.py` (desktop project). Re-implemented here
+/// because this app runs independent logic (does not call FastAPI).
 ///
-/// IDs del Sheet y nombres de pestañas confirmados contra gsheets_sync.py:
-///   - Hoja: "2021 Stock Portfolio Tracker"
-///   - Transacciones: "Transactions" (SGD), "Transactions USD",
+/// Sheet IDs and tab names matching gsheets_sync.py:
+///   - Sheet: "2021 Stock Portfolio Tracker"
+///   - Transactions: "Transactions" (SGD), "Transactions USD",
 ///     "Transactions HKD", "Transactions AUD"
-///   - Metadatos/tickers: "Stock Summary", "Stock Summary USD" (única con
-///     precios objetivo), "Stock Summary HKD", "Summary AUD"
-///   - Histórico: "Portfolio History"
-/// Si el usuario renombra alguna pestaña en el Sheet, actualizar las
-/// constantes de abajo (y también gsheets_sync.py, para no divergir).
+///   - Metadata/tickers: "Stock Summary", "Stock Summary USD" (only one with
+///     target prices), "Stock Summary HKD", "Summary AUD"
+///   - History: "Portfolio History"
 ///
-/// Credenciales: requiere el mismo JSON de cuenta de servicio que usa el
-/// backend Python (`credentials/service_account.json`). NUNCA debe vivir en
-/// el bundle de la app ni en git — ver README.md de este proyecto.
+/// Credentials: requires the same service account JSON used by the Python backend
+/// (`credentials/service_account.json`). NEVER stored in app bundle or git — see README.md.
 actor GoogleSheetsClient {
 
     struct Config {
         var spreadsheetId: String
         var serviceAccount: GoogleServiceAccountJWT.ServiceAccountKey
 
-        /// Config falsa para SwiftUI Previews / tests — NO usar en la app
-        /// real. La clave privada no es válida; cualquier intento de red
-        /// con esto fallará en `accessToken()` (esperado en una preview
-        /// sin red).
+        /// Dummy config for SwiftUI Previews / tests — NOT used in production.
+        /// Private key is invalid; network calls with this will fail in `accessToken()`.
         static var preview: Config {
             Config(
                 spreadsheetId: "preview-sheet-id",
@@ -46,7 +40,7 @@ actor GoogleSheetsClient {
         case badResponse
     }
 
-    // Nombres de pestaña — mismos que gsheets_sync.py / database.py.
+    // Tab names — matching gsheets_sync.py / database.py.
     private static let transactionSheets: [(name: String, currency: String)] = [
         ("Transactions", "SGD"),
         ("Transactions USD", "USD"),
@@ -69,20 +63,17 @@ actor GoogleSheetsClient {
         self.config = config
     }
 
-    // MARK: - API pública
+    // MARK: - Public API
 
-    /// Lee las 4 pestañas de transacciones (en el mismo orden que
-    /// `import_from_excel_if_empty()`) y les asigna un id secuencial — el
-    /// mismo papel que el id autoincremental de SQLite, usado como criterio
-    /// de desempate en `PortfolioEngine.computeHoldings` cuando dos
-    /// transacciones caen en la misma fecha.
+    /// Reads all 4 transaction tabs (in the same order as `import_from_excel_if_empty()`)
+    /// and assigns sequential IDs — serving the same role as SQLite autoincrement IDs.
     func fetchAllTransactions() async throws -> (transactions: [Transaction], duplicatesRemoved: Int) {
         let nameToTicker = try await fetchNameToTickerMap()
         var out: [Transaction] = []
         var nextID = 1
         for (sheetName, currency) in Self.transactionSheets {
             let rows = try await fetchSheetValues(sheetName: sheetName)
-            for row in rows.dropFirst() { // min_row=2: la fila 0 es cabecera
+            for row in rows.dropFirst() { // min_row=2: row 0 is header
                 guard let typeStr = row[safe: 1]?.asString, Self.validTypes.contains(typeStr),
                       let type = TransactionType(rawValue: typeStr) else { continue }
                 guard let date = row[safe: 0]?.asDateString,
@@ -108,12 +99,8 @@ actor GoogleSheetsClient {
             }
         }
 
-        // Deduplica por clave de negocio: (date, type, name, currency, units, price).
-        // No se incluye `remarks` porque dos filas con idéntico contenido financiero
-        // pero observación distinta son un duplicado accidental del Sheet, no una
-        // transacción real diferente — el usuario confirmó que comprar exactamente
-        // el mismo activo, misma cantidad y precio el mismo día es improbable.
-        // Mismo patrón que fetchPortfolioHistory() usa para el histórico.
+        // Deduplicate by business key: (date, type, name, currency, units, price).
+        // Excludes `remarks` so identical financial rows with differing remarks are treated as duplicates.
         struct TxKey: Hashable {
             let date: String, typeRaw: String, name: String
             let currency: String, units: Double, price: Double
@@ -130,10 +117,8 @@ actor GoogleSheetsClient {
         return (transactions: deduped, duplicatesRemoved: out.count - deduped.count)
     }
 
-    /// Espejo de `_import_stock_meta` — categoría + tickers + precios
-    /// objetivo de analistas (solo la pestaña USD trae targets, igual que
-    /// en el Excel). Clave del diccionario: `"\(name)|\(currency)"`, igual
-    /// que `Holding.id` / `Transaction.positionKey`.
+    /// Mirror of `_import_stock_meta` — category + tickers + analyst price targets.
+    /// Dictionary key: `"\(name)|\(currency)"`, matching `Holding.id` / `Transaction.positionKey`.
     func fetchStockMeta() async throws -> [String: StockMeta] {
         var out: [String: StockMeta] = [:]
         for (sheetName, currency, hasTargets) in Self.metaSheets {
@@ -164,16 +149,8 @@ actor GoogleSheetsClient {
         return out
     }
 
-    /// Espejo de `parse_history()` (dashboard_server.py — la función que
-    /// alimenta /api/history, no de `_import_portfolio_history` de
-    /// database.py). OJO: hay una discrepancia ya existente en el propio
-    /// Python entre ambas funciones — `parse_history` salta las 2 primeras
-    /// filas (`rows[2:]`) mientras que `_import_portfolio_history` solo
-    /// salta 1 (`min_row=2`). Aquí replicamos `parse_history` porque es la
-    /// que determina lo que ve el usuario en el gráfico de patrimonio total.
-    /// Si esto resulta ser un bug real en el Python (no una cabecera de 2
-    /// filas a propósito), corregirlo en ambos lados a la vez — no decidir
-    /// unilateralmente cuál es "el bueno".
+    /// Mirror of `parse_history()` (dashboard_server.py).
+    /// Note: skips first 2 header rows (`rows.dropFirst(2)`).
     func fetchPortfolioHistory() async throws -> [HistoryPoint] {
         guard let rows = try? await fetchSheetValues(sheetName: "Portfolio History"), rows.count > 2 else { return [] }
         var out: [HistoryPoint] = []
@@ -188,8 +165,7 @@ actor GoogleSheetsClient {
                 dividends: row[safe: 6]?.asDouble ?? 0
             ))
         }
-        // Deduplica por fecha, quedándose con la última entrada de cada día
-        // (igual que el `reversed()` + `seen` de parse_history).
+        // Deduplicate by date, keeping the latest entry per date.
         var seen = Set<String>()
         var deduped: [HistoryPoint] = []
         for point in out.reversed() {
@@ -201,7 +177,7 @@ actor GoogleSheetsClient {
         return deduped.reversed()
     }
 
-    // MARK: - name -> ticker (espejo de _stock_name_to_ticker)
+    // MARK: - name -> ticker (mirror of _stock_name_to_ticker)
 
     private func fetchNameToTickerMap() async throws -> [String: String] {
         var mapping: [String: String] = [:]
@@ -224,7 +200,7 @@ actor GoogleSheetsClient {
         return mapping
     }
 
-    // MARK: - Autenticación (ver JWTSigner.swift)
+    // MARK: - Authentication (see JWTSigner.swift)
 
     private func accessToken() async throws -> String {
         if let token = cachedToken, Date() < tokenExpiry {
@@ -240,7 +216,7 @@ actor GoogleSheetsClient {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw SheetsError.tokenExchangeFailed(String(data: data, encoding: .utf8) ?? "sin detalle")
+            throw SheetsError.tokenExchangeFailed(String(data: data, encoding: .utf8) ?? "no detail")
         }
         struct TokenResponse: Decodable { let access_token: String; let expires_in: Int }
         let decoded = try JSONDecoder().decode(TokenResponse.self, from: data)
@@ -249,14 +225,12 @@ actor GoogleSheetsClient {
         return decoded.access_token
     }
 
-    // MARK: - Lectura cruda de una pestaña
+    // MARK: - Raw tab reading
 
     private struct ValueRange: Decodable { let values: [[SheetCell]]? }
 
-    /// Descarga una pestaña completa con `valueRenderOption=UNFORMATTED_VALUE`
-    /// — igual que `ws.get_values(value_render_option="UNFORMATTED_VALUE")`
-    /// en gsheets_sync.py, para que las fechas lleguen como números de serie
-    /// y no como texto ya formateado.
+    /// Downloads a full tab with `valueRenderOption=UNFORMATTED_VALUE` so date
+    /// values arrive as serial numbers rather than preformatted strings.
     private func fetchSheetValues(sheetName: String) async throws -> [[SheetCell]] {
         let token = try await accessToken()
         guard let encodedRange = sheetName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
@@ -268,19 +242,17 @@ actor GoogleSheetsClient {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw SheetsError.requestFailed("\(sheetName): \(String(data: data, encoding: .utf8) ?? "sin detalle")")
+            throw SheetsError.requestFailed("\(sheetName): \(String(data: data, encoding: .utf8) ?? "no detail")")
         }
         let decoded = try JSONDecoder().decode(ValueRange.self, from: data)
         return decoded.values ?? []
     }
 }
 
-// MARK: - Celda de Sheets con tipo dinámico (string/number/bool)
+// MARK: - Dynamic-typed Sheets cell (string/number/bool)
 
-/// La API de Sheets devuelve filas "irregulares" (cada fila solo tiene tantas
-/// celdas como la última con contenido) y cada celda puede ser String, Double
-/// o Bool. Este tipo decodifica cualquiera de los tres y ofrece accesores
-/// convenientes, similar a cómo openpyxl entrega valores ya tipados.
+/// Sheets API returns ragged rows where cells may be String, Double, or Bool.
+/// Decodes any of the three and provides convenient accessors.
 enum SheetCell: Decodable {
     case string(String)
     case number(Double)
@@ -313,9 +285,8 @@ enum SheetCell: Decodable {
         }
     }
 
-    /// Convierte a "yyyy-MM-dd", aceptando tanto números de serie estilo
-    /// Excel (epoch 1899-12-30, igual que `_EXCEL_EPOCH` en gsheets_sync.py)
-    /// como texto ya formateado.
+    /// Converts to "yyyy-MM-dd", accepting both Excel-style serial numbers
+    /// (epoch 1899-12-30) and formatted strings.
     var asDateString: String? {
         switch self {
         case .number(let serial):
@@ -336,8 +307,7 @@ enum SheetCell: Decodable {
 }
 
 extension Array {
-    /// Acceso seguro — evita crashear si una fila viene más corta de lo
-    /// esperado (filas irregulares de la API de Sheets).
+    /// Safe element access for ragged rows.
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }

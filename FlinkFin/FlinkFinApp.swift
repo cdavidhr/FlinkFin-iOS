@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// Punto de entrada. Decide entre onboarding (sin credenciales en Keychain
-/// todavía) y la app real, sin guardar nunca la clave privada fuera del
-/// Keychain — ver SecureCredentialStore.swift y AGENTS.md de este proyecto.
+/// Entry point. Decides between onboarding (no credentials in Keychain
+/// yet) and the real app, never saving the private key outside the
+/// Keychain — see SecureCredentialStore.swift and AGENTS.md in this project.
 @main
 struct FlinkFinApp: App {
+    @StateObject private var lm = LanguageManager.shared
     @State private var hasCredentials = SecureCredentialStore.loadServiceAccount() != nil
 
     var body: some Scene {
@@ -15,10 +16,12 @@ struct FlinkFinApp: App {
                     serviceAccount: account
                 )
                 RootTabView(store: PortfolioStore(sheets: GoogleSheetsClient(config: config)))
+                    .environmentObject(lm)
             } else {
                 OnboardingCredentialsView {
                     hasCredentials = true
                 }
+                .environmentObject(lm)
             }
         }
     }

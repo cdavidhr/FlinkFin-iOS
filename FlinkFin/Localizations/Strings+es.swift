@@ -1,0 +1,143 @@
+import Foundation
+
+// Spanish UI strings — mirrors the keys in Strings+en.swift.
+extension Strings {
+    static let es: [String: String] = [
+
+        // MARK: - Navigation / Tabs
+        "tab.overview":             "Resumen",
+        "tab.holdings":             "Posiciones",
+        "tab.performance":          "Rendimiento",
+        "tab.recommendations":      "Recomendaciones",
+        "tab.transactions":         "Transacciones",
+
+        // MARK: - Settings
+        "settings.title":           "Ajustes",
+        "settings.language":        "Idioma",
+        "settings.language.en":     "Inglés",
+        "settings.language.es":     "Español",
+        "settings.done":            "Listo",
+
+        // MARK: - Overview
+        "overview.title":           "Resumen",
+        "overview.loading":         "Cargando…",
+        "overview.no_data":         "Sin datos",
+        "overview.no_data.hint":    "Desliza hacia abajo o pulsa ↻ para cargar el portfolio.",
+        "overview.error":           "Error",
+        "overview.ok":              "OK",
+        "overview.portfolio_value": "Valor total del portfolio",
+        "overview.today":           "Hoy",
+        "overview.ago":             "hace",
+        "overview.key_metrics":     "Métricas clave",
+        "overview.total_cost":      "Coste total",
+        "overview.unrealized_gl":   "G/L no realizada",
+        "overview.return":          "Rentabilidad",
+        "overview.holdings_count":  "Posiciones",
+        "overview.currency_alloc":  "Distribución por divisa",
+        "overview.duplicates":      "Se filtraron %d fila(s) duplicada(s) en el Sheet.",
+
+        // MARK: - Holdings
+        "holdings.title":           "Posiciones",
+        "holdings.sort.by_value":   "Por valor (SGD)",
+        "holdings.sort.by_gl":      "Por G/L %%",
+        "holdings.sort.by_name":    "Por nombre",
+        "holdings.empty":           "Sin posiciones",
+        "holdings.empty.hint":      "Actualiza desde la pestaña Resumen para cargar el portfolio.",
+        "holdings.filter.all":      "Todas",
+        "holdings.sort":            "Ordenar",
+        "holdings.units":           "ud",
+        "holdings.estimated_price": "Precio estimado, no en vivo",
+        "holdings.loading":         "Cargando datos de mercado…",
+        "holdings.no_ticker":       "Sin ticker — sin datos de mercado disponibles.",
+        "holdings.load_failed":     "No se pudieron cargar datos de Yahoo Finance.",
+        "holdings.market_data":     "Datos de mercado",
+        "holdings.pe_ttm":          "P/E (TTM)",
+        "holdings.pe_fwd":          "P/E (FWD)",
+        "holdings.gross_margin":    "Mg. bruto",
+        "holdings.net_margin":      "Mg. neto",
+        "holdings.volume":          "Volumen",
+        "holdings.market_cap":      "Cap. mercado",
+        "holdings.week52":          "Rango 52 semanas",
+        "holdings.my_position":     "Mi posición",
+        "holdings.avg_cost":        "Coste medio/ud",
+        "holdings.total_cost":      "Coste total",
+        "holdings.realized_gl":     "G/L realizada",
+        "holdings.dividends":       "Dividendos tot",
+        "holdings.dividends_ttm":   "Divid. (TTM)",
+        "holdings.since":           "Desde",
+        "holdings.target.min":      "Obj. mín.",
+        "holdings.target.avg":      "Obj. medio",
+        "holdings.target.max":      "Obj. máx.",
+
+        // MARK: - Performance
+        "performance.title":        "Rendimiento",
+        "performance.period.all":   "Todo",
+        "performance.chart_title":  "Valor del portfolio vs coste",
+        "performance.no_history":   "Sin histórico todavía",
+        "performance.period_start": "Inicio periodo",
+        "performance.current":      "Actual",
+        "performance.change":       "Variación",
+        "performance.top_movers":   "Mejores y peores del periodo",
+        "performance.pull_load":    "Desliza hacia abajo para cargar.",
+        "performance.top5":         "↑ Top 5",
+        "performance.bottom5":      "↓ Bottom 5",
+
+        // MARK: - Recommendations
+        "rec.title":                "Recomendaciones",
+        "rec.empty":                "Sin recomendaciones",
+        "rec.empty.hint":           "No hay posiciones con la señal seleccionada.",
+        "rec.signal_summary":       "Resumen de Señales",
+        "rec.filter.all":           "Todas",
+        "rec.disclaimer":           "Análisis automatizado basado en precios objetivo de analistas. **No constituye asesoramiento financiero.**",
+        "rec.current_price":        "Precio actual",
+        "rec.analyst_target":       "Objetivo Analistas",
+        "rec.no_target":            "Sin objetivo",
+        "rec.key_factors":          "Factores clave:",
+        "rec.signal.strong_buy":    "COMPRA FUERTE",
+        "rec.signal.buy":           "COMPRAR",
+        "rec.signal.hold":          "MANTENER",
+        "rec.signal.take_profit":   "TOMAR BENEFICIO",
+        "rec.signal.na":            "N/D",
+
+        // MARK: - Transactions
+        "txn.title":                "Transacciones",
+        "txn.search":               "Buscar por nombre",
+        "txn.empty":                "Sin transacciones",
+        "txn.units":                "u.",
+
+        // MARK: - Onboarding
+        "onboarding.title":         "Conectar Google Sheets",
+        "onboarding.description":   "Importa el JSON de la cuenta de servicio de Google que tiene acceso de lectura a tu hoja de cálculo de portfolio. Es el mismo fichero que usa el dashboard de escritorio.",
+        "onboarding.service_acct":  "Cuenta de servicio",
+        "onboarding.import_btn":    "Importar service_account.json",
+        "onboarding.sheet_label":   "ID de la hoja de cálculo",
+        "onboarding.sheet_ph":      "ID del Google Sheet",
+        "onboarding.save":          "Guardar y conectar",
+        "onboarding.file_error":    "No se pudo leer el fichero: %@",
+
+        // MARK: - Errors
+        "error.load_failed":        "No se pudieron cargar los datos: %@",
+
+        // MARK: - Recommendation Engine reasons
+        "reason.upside":            "📈 %@%% de recorrido hasta objetivo analistas (%@)",
+        "reason.overvalued":        "⚠️ Cotización %@%% por encima del objetivo analistas (%@)",
+        "reason.target_range":      "🎯 Rango consenso: %@ – %@",
+        "reason.strong_buy":        "⭐ Consenso analistas: Strong Buy",
+        "reason.buy":               "⭐ Consenso analistas: Buy",
+        "reason.sell":              "⚠️ Consenso analistas: Venta / Infraponderar",
+        "reason.eps_growth":        "💡 Crecimiento esperado de beneficio (EPS: %@ ➔ %@)",
+        "reason.eps_loss":          "⚠️ Empresa en pérdidas (EPS: %@)",
+        "reason.roe":               "📊 Alta rentabilidad sobre capital (ROE: %@%%)",
+        "reason.net_margin":        "💵 Margen neto saludable (%@%%)",
+        "reason.rev_growth":        "🚀 Crecimiento de ingresos del %@%%",
+        "reason.rev_decline":       "📉 Caída de ingresos del %@%%",
+        "reason.solid_balance":     "🛡️ Balance sólido (Deuda/Capital: %@%%)",
+        "reason.high_debt":         "⚠️ Alto endeudamiento (Deuda/Capital: %@%%)",
+        "reason.position_loss":     "📉 Pérdida latente del %@%% en tu posición",
+        "reason.position_big_gain": "🏆 Ganancia latente del %@%% en tu posición",
+        "reason.position_gain":     "✅ Posición en verde, +%@%%",
+        "reason.dividend_yield":    "💰 Dividend yield: %@%%",
+        "reason.free_shares":       "🎁 Recibidas sin coste — ganancia íntegra",
+        "reason.no_coverage":       "ℹ️ Sin cobertura de precio objetivo por analistas",
+    ]
+}

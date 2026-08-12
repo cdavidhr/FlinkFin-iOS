@@ -1,10 +1,8 @@
 import Foundation
 
-/// Un punto de la hoja "Portfolio History" del Google Sheet — espejo de
-/// `parse_history()` en dashboard_server.py. Recuerda: este valor es
-/// patrimonio total (acciones + efectivo + activos externos), NO el mismo
-/// número que `PortfolioTotals.valueSGD`. Mismo trade-off ya aceptado en el
-/// dashboard web (ver AGENTS.md del proyecto `dashboard`).
+/// A row from the "Portfolio History" sheet — mirror of `parse_history()` in
+/// dashboard_server.py. Note: this value represents total net worth (stocks +
+/// cash + external assets), NOT the same figure as `PortfolioTotals.valueSGD`.
 struct HistoryPoint: Identifiable, Codable, Equatable {
     var date: String   // "YYYY-MM-DD"
     var cost: Double
@@ -16,7 +14,7 @@ struct HistoryPoint: Identifiable, Codable, Equatable {
     var id: String { date }
 }
 
-/// Señal de recomendación — espejo de `recommend()` en dashboard_server.py.
+/// Recommendation signal — mirror of `recommend()` in dashboard_server.py.
 enum RecommendationSignal: String, Codable {
     case strongBuy = "STRONG BUY"
     case buy = "BUY"

@@ -2,6 +2,19 @@
 
 Registro cronológico de cambios entre sesiones y entre modelos (Claude /
 Gemini Antigravity 2.0). Más reciente arriba. No borrar entradas antiguas.
+## 2026-08-12 — Gemini Antigravity
+
+- **Traducción de comentarios de código a inglés**:
+  - Todos los comentarios de código (`//`, `///`, `/* */`) en los 20 ficheros Swift del proyecto fueron traducidos del español al inglés.
+  - La regla en `AGENTS.md` fue actualizada a *"Source code comments and documentation are written in English"*.
+
+- **Sistema de localización y selector de idioma en la app (EN / ES)**:
+  - Creado `LanguageManager.swift` (`ObservableObject` con persistencia en `@AppStorage("appLanguage")` e inyección vía `.environmentObject`).
+  - Creados los diccionarios `Strings+en.swift` y `Strings+es.swift` con la totalidad de cadenas de UI de la app (pestañas, tarjetas, botones, estados vacíos, alertas de error) y razones del motor de recomendaciones.
+  - Creada la vista `SettingsView.swift` con selector de idioma que cambia el idioma de la UI en tiempo real sin reiniciar la app.
+  - Añadido botón de ajustes (⚙️) en `OverviewView` y hoja modal vinculada en `RootTabView`.
+  - Actualizados `RecommendationEngine.swift`, `PortfolioStore.swift`, `FlinkFinApp.swift` y todas las vistas (`RootTabView`, `OverviewView`, `HoldingsView`, `PerformanceView`, `RecommendationsView`, `TransactionsView`, `OnboardingCredentialsView`) para usar `lm["key"]` / `lm.fmt()`.
+
 ## 2026-07-25 — Gemini Antigravity (2ª entrada)
 
 - **YahooFinanceClient.swift — Motor de datos de analistas reescrito con TradingView Scanner API**:

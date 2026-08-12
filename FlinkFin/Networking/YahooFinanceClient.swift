@@ -1,18 +1,14 @@
 import Foundation
 
-/// Equivalente Swift de los helpers `_fetch_fx_live` / `_fetch_prices_live` /
-/// `_fetch_sparklines_live` (dashboard_server.py). Usa el endpoint no-oficial
-/// `query1.finance.yahoo.com/v8/finance/chart/{symbol}`, que es el mismo que
-/// yfinance usa por debajo para precios e histórico.
+/// Swift equivalent of helpers `_fetch_fx_live` / `_fetch_prices_live` /
+/// `_fetch_sparklines_live` (dashboard_server.py). Uses unofficial endpoint
+/// `query1.finance.yahoo.com/v8/finance/chart/{symbol}`, which is the same one
+/// yfinance uses under the hood for prices and history.
 ///
-/// Para datos fundamentales (P/E, beta, cap. de mercado…) Yahoo Finance exige
-/// un crumb de sesión que el simulador iOS no puede obtener de forma fiable.
-/// En su lugar, `fetchQuoteDetail` parsea la sección `meta` de la respuesta
-/// del chart (rango 52 semanas, precio, volumen) y calcula el rango anual a
-/// partir del histórico de 1 año — todo con el mismo endpoint que ya funciona.
-///
-/// ⚠️ Endpoint no-oficial: Yahoo puede cambiarlo. Si los precios dejan de
-/// llegar, este es el primer sitio a revisar.
+/// For fundamental data (P/E, beta, market cap…) Yahoo Finance requires
+/// a session crumb that cannot be reliably fetched from iOS simulator/device without a browser.
+/// `fetchQuoteDetail` parses the `meta` section of the chart response (52-week range, price, volume)
+/// and calculates annual range from 1-year history using the same endpoint.
 enum YahooFinanceClient {
 
     static let fallbackFXRates: [String: Double] = [
@@ -23,7 +19,7 @@ enum YahooFinanceClient {
         ("USDSGD=X", "USD"), ("HKDSGD=X", "HKD"), ("AUDSGD=X", "AUD"),
     ]
 
-    // MARK: - Precios, FX y sparklines (espejo del dashboard Python)
+    // MARK: - Prices, FX, and Sparklines (mirror of Python dashboard)
 
     static func fetchFXRates() async -> [String: Double] {
         var rates = fallbackFXRates
@@ -54,9 +50,8 @@ enum YahooFinanceClient {
         return prices
     }
 
-    /// Igual que fetchPrices pero devuelve también el cierre del día anterior
-    /// (penúltimo valor de la serie 5d/1d) para calcular la variación intradiaria.
-    /// Ambos precios vienen de la misma petición — sin coste extra de red.
+    /// Same as fetchPrices but also returns previous day's close (penultimate value of 5d/1d series)
+    /// to calculate intraday change without extra network overhead.
     static func fetchPricesAndPrevClose(tickers: [String])
         async -> (current: [String: Double], prevClose: [String: Double])
     {
@@ -70,7 +65,7 @@ enum YahooFinanceClient {
                               ?? []
                     let clean = s.compactMap { $0 }
                     let cur  = clean.last
-                    // penúltimo = cierre sesión anterior
+                    // penultimate = previous session close
                     let prev = clean.count >= 2 ? clean[clean.count - 2] : nil
                     return (t, cur, prev)
                 }
@@ -100,21 +95,20 @@ enum YahooFinanceClient {
         return sparks
     }
 
-    // MARK: - Objetivos de Analistas en Vivo
+    // MARK: - Live Analyst Targets
     //
-    // FUENTE PRIMARIA: TradingView Scanner API
+    // PRIMARY SOURCE: TradingView Scanner API
     //   POST https://scanner.tradingview.com/global/scan
-    //   • Gratuito, sin API key, sin autenticación
-    //   • Soporta bolsas globales: NASDAQ, NYSE, SGX, LSE, ASX, etc.
-    //   • Una sola petición batch para todos los tickers
-    //   • Devuelve: price_target_average, price_target_high, price_target_low, recommendation_mark
+    //   • Free, no API key, no auth required
+    //   • Supports global exchanges: NASDAQ, NYSE, SGX, LSE, ASX, etc.
+    //   • Single batch request for all tickers
+    //   • Returns: price_target_average, price_target_high, price_target_low, recommendation_mark
     //
-    // FUENTE SECUNDARIA: Yahoo Finance quoteSummary con crumb (US + internacionales)
-    // FUENTE TERCIARIA: Finviz (solo US, sin sufijo en el ticker)
+    // SECONDARY SOURCE: Yahoo Finance quoteSummary with crumb (US + international)
+    // TERTIARY SOURCE: Finviz (US only, tickers without suffix)
     //
-    // Nota sobre ETFs: Los ETFs (VWRA.L, etc.) no tienen precio objetivo de analistas
-    // por naturaleza — los analistas de renta variable solo cubren empresas, no índices.
-    // Para ETFs se devuelve nil y el motor de recomendaciones usa su lógica de fallback.
+    // Note on ETFs: ETFs (VWRA.L, etc.) naturally do not have analyst price targets.
+    // For ETFs, nil is returned and RecommendationEngine falls back to position performance logic.
 
     struct LiveAnalystTarget {
         var targetMean: Double?
@@ -123,9 +117,8 @@ enum YahooFinanceClient {
         var recommendationKey: String?   // "strong_buy" | "buy" | "hold" | "underperform" | "strong_sell"
     }
 
-    // MARK: Mapeo Ticker → Exchange para TradingView
-    // TradingView necesita el formato "EXCHANGE:TICKER" (ej. "NASDAQ:PLTR", "SGX:D05")
-    // Inferimos el exchange del sufijo del ticker.
+    // MARK: Ticker → Exchange mapping for TradingView
+    // TradingView requires "EXCHANGE:TICKER" format (e.g., "NASDAQ:PLTR", "SGX:D05").
 
     private static func tradingViewSymbol(for ticker: String) -> String {
         let upper = ticker.uppercased()
@@ -143,10 +136,10 @@ enum YahooFinanceClient {
         } else if upper.hasSuffix(".T") {
             return "TSE:" + upper.replacingOccurrences(of: ".T", with: "")
         } else if upper.contains("=X") || upper.contains("^") {
-            // FX y ETFs sin sufijo específico — buscar en global
+            // FX and ETFs without specific suffix — search global
             return "FOREXCOM:" + upper.replacingOccurrences(of: "=X", with: "").replacingOccurrences(of: "^", with: "")
         } else {
-            // Asumir US: el scanner global de TradingView detecta NASDAQ/NYSE automáticamente
+            // Assume US: TradingView global scanner auto-detects NASDAQ/NYSE
             return upper
         }
     }
@@ -161,7 +154,7 @@ enum YahooFinanceClient {
         return "strong_sell"
     }
 
-    // MARK: URLSession dedicada con cookies propias (necesaria para Yahoo)
+    // MARK: Dedicated URLSession with cookie storage for Yahoo
     private static let yahooSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpCookieAcceptPolicy = .always
@@ -179,16 +172,16 @@ enum YahooFinanceClient {
         req.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
     }
 
-    // MARK: Entrada pública
+    // MARK: Public Entry Point
 
     static func fetchAnalystTargets(tickers: [String]) async -> [String: LiveAnalystTarget] {
         let clean = Array(Set(tickers.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }.filter { !$0.isEmpty }))
         guard !clean.isEmpty else { return [:] }
 
-        // Paso 1: intentar TradingView batch (todos los tickers de golpe)
+        // Step 1: try TradingView batch (all tickers at once)
         var results = await fetchFromTradingView(tickers: clean)
 
-        // Paso 2: para los tickers que TradingView no devolvió datos, intentar Yahoo + Finviz
+        // Step 2: for tickers missing from TradingView, try Yahoo + Finviz
         let missing = clean.filter { results[$0] == nil }
         if !missing.isEmpty {
             let crumb = await fetchYahooCrumb()
@@ -206,7 +199,7 @@ enum YahooFinanceClient {
         return results
     }
 
-    // MARK: Capa 1 — TradingView Scanner API (batch, gratuito, global)
+    // MARK: Layer 1 — TradingView Scanner API (batch, free, global)
 
     private static func fetchFromTradingView(tickers: [String]) async -> [String: LiveAnalystTarget] {
         guard let url = URL(string: "https://scanner.tradingview.com/global/scan") else { return [:] }
@@ -237,7 +230,6 @@ enum YahooFinanceClient {
               let rows = json["data"] as? [[String: Any]]
         else { return [:] }
 
-        // Construir índice tvSymbol → ticker original (para mapear la respuesta de vuelta)
         var tvToTicker: [String: String] = [:]
         for ticker in tickers {
             tvToTicker[tradingViewSymbol(for: ticker)] = ticker
@@ -249,7 +241,6 @@ enum YahooFinanceClient {
                   let values = row["d"] as? [Any?]
             else { continue }
 
-            // values = [name, price_target_average, price_target_high, price_target_low, recommendation_mark]
             let mean = values.count > 1 ? (values[1] as? Double) : nil
             let high = values.count > 2 ? (values[2] as? Double) : nil
             let low  = values.count > 3 ? (values[3] as? Double) : nil
@@ -269,7 +260,7 @@ enum YahooFinanceClient {
         return results
     }
 
-    // MARK: Capa 2 — Yahoo Finance quoteSummary con crumb
+    // MARK: Layer 2 — Yahoo Finance quoteSummary with crumb
 
     private static func fetchYahooCrumb() async -> String? {
         for urlStr in ["https://fc.yahoo.com", "https://finance.yahoo.com"] {
@@ -293,7 +284,7 @@ enum YahooFinanceClient {
         return nil
     }
 
-    // MARK: Capa 2+3 — Yahoo + Finviz (para tickers que TradingView no cubrió)
+    // MARK: Layer 2+3 — Yahoo + Finviz fallback
 
     private static func fetchFallback(ticker: String, crumb: String?) async -> LiveAnalystTarget? {
         // Yahoo quoteSummary
@@ -331,13 +322,13 @@ enum YahooFinanceClient {
                     let key  = fd.recommendationKey
                     if (mean != nil && mean! > 0) || (key != nil && !key!.isEmpty) {
                         return LiveAnalystTarget(targetMean: mean, targetHigh: fd.targetHighPrice?.raw,
-                                                targetLow: fd.targetLowPrice?.raw, recommendationKey: key)
+                                                 targetLow: fd.targetLowPrice?.raw, recommendationKey: key)
                     }
                 }
             }
         }
 
-        // Finviz (solo US, sin punto en el ticker)
+        // Finviz (US only, tickers without dot)
         guard !ticker.contains("."),
               let enc = ticker.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "https://finviz.com/quote.ashx?t=\(enc)&p=d")
@@ -357,7 +348,7 @@ enum YahooFinanceClient {
                                  recommendationKey: recommendationKey(from: recom != nil ? recom! * 1.25 : nil))
     }
 
-    // MARK: Helpers regex
+    // MARK: Regex Helpers
 
     private static func extractDouble(pattern: String, from text: String) -> Double? {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else { return nil }
@@ -375,24 +366,7 @@ enum YahooFinanceClient {
         return ns.substring(with: match.range(at: 1))
     }
 
-
-
-
-
-
-    // MARK: - Datos fundamentales (sin crumb)
-    //
-    // Yahoo Finance requiere un crumb para quoteSummary. El simulador iOS no
-    // puede obtenerlo de forma fiable porque Yahoo detecta que no es un
-    // navegador real. En vez de intentar el crumb (que falla con 401/403),
-    // se usa el endpoint chart/v8 con range=1y para obtener:
-    //   • meta.regularMarketPrice   → precio actual
-    //   • meta.regularMarketVolume  → volumen
-    //   • meta.fiftyTwoWeekHigh/Low → rango 52 semanas (cuando lo incluye)
-    //   • cálculo propio del máx/mín del histórico de 1 año como fallback
-    //
-    // PE, beta, cap. de mercado, etc. no están en el endpoint de chart y
-    // se devuelven como nil (la UI los muestra como "n/d").
+    // MARK: - Fundamental data (crumb-free)
 
     static func fetchQuoteDetail(ticker: String) async throws -> StockQuote {
         guard !ticker.isEmpty,
@@ -407,7 +381,7 @@ enum YahooFinanceClient {
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             throw NSError(domain: "Yahoo", code: code,
-                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(code) para \(ticker)"])
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(code) for \(ticker)"])
         }
 
         let decoded = try JSONDecoder().decode(ChartResponseFull.self, from: data)
@@ -417,8 +391,6 @@ enum YahooFinanceClient {
 
         let meta = result.meta
 
-        // Rango 52 semanas: usar el meta si está disponible, si no calcular
-        // del histórico de 1 año que acabamos de descargar.
         let closes: [Double] = (result.indicators.adjclose?.first?.adjclose
                                 ?? result.indicators.quote.first?.close
                                 ?? []).compactMap { $0 }
@@ -433,8 +405,6 @@ enum YahooFinanceClient {
             fiftyTwoWeekHigh:       w52High,
             fiftyTwoWeekLow:        w52Low,
             volume:                 meta.regularMarketVolume.map { Double($0) },
-            // Los siguientes campos requieren quoteSummary (crumb).
-            // Se devuelven nil y la UI los muestra como "n/d".
             trailingPE:             nil,
             forwardPE:              nil,
             trailingEps:            nil,
@@ -451,7 +421,7 @@ enum YahooFinanceClient {
         )
     }
 
-    // MARK: - Decodable compartidos
+    // MARK: - Decodables
 
     private struct ChartResponseFull: Decodable {
         struct ChartWrapper: Decodable { let result: [ChartResult]? }
@@ -459,7 +429,6 @@ enum YahooFinanceClient {
             let meta: ChartMeta
             let indicators: Indicators
         }
-        /// Sección `meta` — incluye precio actual y a veces rango 52 semanas.
         struct ChartMeta: Decodable {
             let regularMarketPrice: Double?
             let regularMarketVolume: Int?
@@ -507,7 +476,7 @@ enum YahooFinanceClient {
         return result.indicators.quote.first?.close ?? []
     }
 
-    // MARK: - Cabeceras
+    // MARK: - Headers
 
     private static func applyHeaders(to req: inout URLRequest) {
         req.setValue(
@@ -519,21 +488,15 @@ enum YahooFinanceClient {
     }
 }
 
-// MARK: - Modelo de datos fundamentales
+// MARK: - Fundamental Data Model
 
-/// Datos de mercado de un ticker obtenidos del endpoint chart/v8.
-/// Los campos que requieren quoteSummary (PE, beta, market cap…)
-/// son nil mientras Yahoo no permita el crumb desde iOS.
 struct StockQuote {
     var ticker: String
     var regularMarketPrice: Double?
     var regularMarketChangePct: Double?
-    // Rango 52 semanas — disponible desde chart/meta o calculado del histórico
     var fiftyTwoWeekHigh: Double?
     var fiftyTwoWeekLow: Double?
-    // Volumen — disponible desde chart/meta
     var volume: Double?
-    // Los siguientes requieren quoteSummary (crumb) — nil por ahora
     var trailingPE: Double?
     var forwardPE: Double?
     var trailingEps: Double?
@@ -547,7 +510,6 @@ struct StockQuote {
     var grossMargins: Double?
     var profitMargins: Double?
     var roe: Double?
-    // Solo si hay fuente externa (no usada actualmente)
     var sector: String?
     var industry: String?
     var description: String?

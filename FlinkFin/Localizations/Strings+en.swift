@@ -1,0 +1,143 @@
+import Foundation
+
+// English UI strings — keyed by the same keys used in LanguageManager subscript.
+enum Strings {
+    static let en: [String: String] = [
+
+        // MARK: - Navigation / Tabs
+        "tab.overview":             "Overview",
+        "tab.holdings":             "Holdings",
+        "tab.performance":          "Performance",
+        "tab.recommendations":      "Recommendations",
+        "tab.transactions":         "Transactions",
+
+        // MARK: - Settings
+        "settings.title":           "Settings",
+        "settings.language":        "Language",
+        "settings.language.en":     "English",
+        "settings.language.es":     "Spanish",
+        "settings.done":            "Done",
+
+        // MARK: - Overview
+        "overview.title":           "Overview",
+        "overview.loading":         "Loading…",
+        "overview.no_data":         "No Data",
+        "overview.no_data.hint":    "Pull down or tap ↻ to load the portfolio.",
+        "overview.error":           "Error",
+        "overview.ok":              "OK",
+        "overview.portfolio_value": "Total Portfolio Value",
+        "overview.today":           "Today",
+        "overview.ago":             "ago",
+        "overview.key_metrics":     "Key Metrics",
+        "overview.total_cost":      "Total Cost",
+        "overview.unrealized_gl":   "Unrealized G/L",
+        "overview.return":          "Return",
+        "overview.holdings_count":  "Holdings",
+        "overview.currency_alloc":  "Currency Allocation",
+        "overview.duplicates":      "Filtered out %d duplicate row(s) in the sheet.",
+
+        // MARK: - Holdings
+        "holdings.title":           "Holdings",
+        "holdings.sort.by_value":   "By value (SGD)",
+        "holdings.sort.by_gl":      "By G/L %%",
+        "holdings.sort.by_name":    "By name",
+        "holdings.empty":           "No positions",
+        "holdings.empty.hint":      "Refresh from the Overview tab to load your portfolio.",
+        "holdings.filter.all":      "All",
+        "holdings.sort":            "Sort",
+        "holdings.units":           "units",
+        "holdings.estimated_price": "Estimated price, not live",
+        "holdings.loading":         "Loading market data…",
+        "holdings.no_ticker":       "No ticker — no market data available.",
+        "holdings.load_failed":     "Could not load Yahoo Finance data.",
+        "holdings.market_data":     "Market data",
+        "holdings.pe_ttm":          "P/E (TTM)",
+        "holdings.pe_fwd":          "P/E (FWD)",
+        "holdings.gross_margin":    "Gross margin",
+        "holdings.net_margin":      "Net margin",
+        "holdings.volume":          "Volume",
+        "holdings.market_cap":      "Market cap",
+        "holdings.week52":          "52-week range",
+        "holdings.my_position":     "My position",
+        "holdings.avg_cost":        "Avg cost/unit",
+        "holdings.total_cost":      "Total cost",
+        "holdings.realized_gl":     "Realized G/L",
+        "holdings.dividends":       "Total dividends",
+        "holdings.dividends_ttm":   "Dividends (TTM)",
+        "holdings.since":           "Since",
+        "holdings.target.min":      "Min target",
+        "holdings.target.avg":      "Avg target",
+        "holdings.target.max":      "Max target",
+
+        // MARK: - Performance
+        "performance.title":        "Performance",
+        "performance.period.all":   "All",
+        "performance.chart_title":  "Portfolio Value vs Cost",
+        "performance.no_history":   "No History Yet",
+        "performance.period_start": "Period Start",
+        "performance.current":      "Current",
+        "performance.change":       "Change",
+        "performance.top_movers":   "Top & Bottom Movers",
+        "performance.pull_load":    "Pull down to load.",
+        "performance.top5":         "↑ Top 5",
+        "performance.bottom5":      "↓ Bottom 5",
+
+        // MARK: - Recommendations
+        "rec.title":                "Recommendations",
+        "rec.empty":                "No Recommendations",
+        "rec.empty.hint":           "No holdings match the selected signal.",
+        "rec.signal_summary":       "Signal Summary",
+        "rec.filter.all":           "All",
+        "rec.disclaimer":           "Automated analysis based on analyst price targets and market valuations. **Does not constitute financial advice.**",
+        "rec.current_price":        "Current price",
+        "rec.analyst_target":       "Analyst Target",
+        "rec.no_target":            "No target",
+        "rec.key_factors":          "Key factors:",
+        "rec.signal.strong_buy":    "STRONG BUY",
+        "rec.signal.buy":           "BUY",
+        "rec.signal.hold":          "HOLD",
+        "rec.signal.take_profit":   "TAKE PROFIT",
+        "rec.signal.na":            "N/A",
+
+        // MARK: - Transactions
+        "txn.title":                "Transactions",
+        "txn.search":               "Search by name",
+        "txn.empty":                "No Transactions",
+        "txn.units":                "units",
+
+        // MARK: - Onboarding
+        "onboarding.title":         "Connect Google Sheets",
+        "onboarding.description":   "Import the Google service account JSON that has read access to your portfolio spreadsheet. It is the same file used by the desktop dashboard.",
+        "onboarding.service_acct":  "Service Account",
+        "onboarding.import_btn":    "Import service_account.json",
+        "onboarding.sheet_label":   "Spreadsheet ID",
+        "onboarding.sheet_ph":      "Google Sheet ID",
+        "onboarding.save":          "Save & Connect",
+        "onboarding.file_error":    "Could not read file: %@",
+
+        // MARK: - Errors
+        "error.load_failed":        "Could not load data: %@",
+
+        // MARK: - Recommendation Engine reasons
+        "reason.upside":            "📈 %@%% upside to analyst target (%@)",
+        "reason.overvalued":        "⚠️ Price %@%% above analyst target (%@)",
+        "reason.target_range":      "🎯 Consensus range: %@ – %@",
+        "reason.strong_buy":        "⭐ Analyst consensus: Strong Buy",
+        "reason.buy":               "⭐ Analyst consensus: Buy",
+        "reason.sell":              "⚠️ Analyst consensus: Sell / Underperform",
+        "reason.eps_growth":        "💡 Expected earnings growth (EPS: %@ ➔ %@)",
+        "reason.eps_loss":          "⚠️ Company in the red (EPS: %@)",
+        "reason.roe":               "📊 High return on equity (ROE: %@%%)",
+        "reason.net_margin":        "💵 Healthy net margin (%@%%)",
+        "reason.rev_growth":        "🚀 Revenue growth of %@%%",
+        "reason.rev_decline":       "📉 Revenue decline of %@%%",
+        "reason.solid_balance":     "🛡️ Solid balance sheet (D/E: %@%%)",
+        "reason.high_debt":         "⚠️ High leverage (D/E: %@%%)",
+        "reason.position_loss":     "📉 Unrealized loss of %@%% on your position",
+        "reason.position_big_gain": "🏆 Unrealized gain of %@%% on your position",
+        "reason.position_gain":     "✅ Position in profit, +%@%%",
+        "reason.dividend_yield":    "💰 Dividend yield: %@%%",
+        "reason.free_shares":       "🎁 Received at no cost — pure gain",
+        "reason.no_coverage":       "ℹ️ No analyst price target coverage",
+    ]
+}

@@ -1,16 +1,11 @@
 import SwiftUI
 
-/// Pestaña "Transacciones" — espejo de #tab-transactions: listado de
-/// movimientos (Buy/Sell/Div), más reciente primero. Solo lectura en este
-/// scaffold v1 — el dashboard web permite añadir transacciones a mano
-/// (POST /api/transactions contra SQLite); esta app, al leer directamente
-/// de Google Sheets, NO escribe en la hoja (ver regla en AGENTS.md del
-/// proyecto `dashboard`: nunca editar el Sheet del usuario directamente).
-/// Si en el futuro se quiere registrar transacciones desde la app, lo más
-/// seguro es escribirlas en una hoja/pestaña separada y dejar que el
-/// usuario las revise, no escribir directamente sobre "Transactions *".
+/// "Transactions" tab — mirrors #tab-transactions: read-only list of movements
+/// (Buy/Sell/Div), most recent first. Direct Google Sheets access means this app
+/// never writes to the sheet (per project rule: read-only against Sheets).
 struct TransactionsView: View {
     @EnvironmentObject private var store: PortfolioStore
+    @EnvironmentObject private var lm: LanguageManager
     @State private var query: String = ""
 
     private var filtered: [Transaction] {
@@ -25,8 +20,8 @@ struct TransactionsView: View {
                 TransactionRow(tx: tx)
             }
             .listStyle(.plain)
-            .searchable(text: $query, prompt: "Buscar por nombre")
-            .navigationTitle("Transacciones")
+            .searchable(text: $query, prompt: lm["txn.search"])
+            .navigationTitle(lm["txn.title"])
             .refreshable { await store.refresh() }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -39,7 +34,7 @@ struct TransactionsView: View {
             }
             .overlay {
                 if filtered.isEmpty {
-                    ContentUnavailableView("Sin transacciones", systemImage: "list.bullet.rectangle")
+                    ContentUnavailableView(lm["txn.empty"], systemImage: "list.bullet.rectangle")
                 }
             }
         }
@@ -47,6 +42,7 @@ struct TransactionsView: View {
 }
 
 private struct TransactionRow: View {
+    @EnvironmentObject private var lm: LanguageManager
     let tx: Transaction
 
     private var typeColor: Color {
@@ -60,7 +56,6 @@ private struct TransactionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(tx.type.rawValue)
-                // HIG: caption2 escala con Dynamic Type; system(size:10) no.
                 .font(.caption2.weight(.bold))
                 .padding(.horizontal, 6).padding(.vertical, 3)
                 .background(Capsule().fill(typeColor.opacity(0.18)))
@@ -71,7 +66,7 @@ private struct TransactionRow: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text("\(Fmt.number(tx.units, decimals: 4)) u.").font(.caption)
+                Text("\(Fmt.number(tx.units, decimals: 4)) \(lm["txn.units"])").font(.caption)
                 Text(Fmt.money(tx.price, currency: tx.currency)).font(.caption2).foregroundStyle(.secondary)
             }
         }
@@ -80,5 +75,7 @@ private struct TransactionRow: View {
 }
 
 #Preview {
-    TransactionsView().environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+    TransactionsView()
+        .environmentObject(PortfolioStore(sheets: GoogleSheetsClient(config: .preview)))
+        .environmentObject(LanguageManager.shared)
 }

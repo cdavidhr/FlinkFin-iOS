@@ -1,70 +1,21 @@
 import Foundation
 
-/// Google Sheets API v4 client that reads and parses the same tabs as
-/// `gsheets_sync.py` + `database.py` (desktop project). Re-implemented here
-/// because this app runs independent logic (does not call FastAPI).
-///
-/// Sheet IDs and tab names matching gsheets_sync.py:
-///   - Sheet: "2021 Stock Portfolio Tracker"
-///   - Transactions: "Transactions" (SGD), "Transactions USD",
-///     "Transactions HKD", "Transactions AUD"
-///   - Metadata/tickers: "Stock Summary", "Stock Summary USD" (only one with
-///     target prices), "Stock Summary HKD", "Summary AUD"
-///   - History: "Portfolio History"
-///
-/// Credentials: requires the same service account JSON used by the Python backend
-/// (`credentials/service_account.json`). NEVER stored in app bundle or git — see README.md.
+/// Swift client for Google Sheets API v4 (read-only).
+/// Uses `JWTSigner` to generate JWT tokens signed with the service account's RS256 private key,
+/// then exchanges them for Google OAuth2 access tokens — NO third-party SDK dependencies required.
 actor GoogleSheetsClient {
-
     struct Config {
         var spreadsheetId: String
         var serviceAccount: GoogleServiceAccountJWT.ServiceAccountKey
-
-        /// Dummy config for SwiftUI Previews / tests — NOT used in production.
-        /// Private key is invalid; network calls with this will fail in `accessToken()`.
-        static var preview: Config {
-            Config(
-                spreadsheetId: "preview-sheet-id",
-                serviceAccount: .init(
-                    client_email: "preview@example.iam.gserviceaccount.com",
-                    private_key: "-----BEGIN PRIVATE KEY-----\npreview\n-----END PRIVATE KEY-----",
-                    token_uri: "https://oauth2.googleapis.com/token"
-                )
-            )
-        }
     }
 
-    enum SheetsError: Error, LocalizedError {
-        case tokenExchangeFailed(String)
-        case requestFailed(String)
-        case badResponse
-
-        var errorDescription: String? {
-            switch self {
-            case .tokenExchangeFailed(let detail):
-                return "Token exchange failed: \(detail)"
-            case .requestFailed(let detail):
-                return "Sheets request failed: \(detail)"
-            case .badResponse:
-                return "Bad response from Google Sheets API"
-            }
-        }
+    struct StockMeta {
+        let ticker: String?
+        let category: String
+        let avgTarget: Double?
+        let minTarget: Double?
+        let maxTarget: Double?
     }
-
-    // Tab names — matching gsheets_sync.py / database.py.
-    private static let transactionSheets: [(name: String, currency: String)] = [
-        ("Transactions", "SGD"),
-        ("Transactions USD", "USD"),
-        ("Transactions HKD", "HKD"),
-        ("Transactions AUD", "AUD"),
-    ]
-    private static let metaSheets: [(name: String, currency: String, hasTargets: Bool)] = [
-        ("Stock Summary", "SGD", false),
-        ("Stock Summary USD", "USD", true),
-        ("Stock Summary HKD", "HKD", false),
-        ("Summary AUD", "AUD", false),
-    ]
-    private static let validTypes: Set<String> = ["Buy", "Sell", "Div"]
 
     private let config: Config
     private var cachedToken: String?
@@ -74,54 +25,64 @@ actor GoogleSheetsClient {
         self.config = config
     }
 
+    // MARK: - Tab Configurations (matching gsheets_sync.py)
+
+    private static let transactionSheets: [(name: String, currency: String)] = [
+        ("Transactions", "SGD"),
+        ("Transactions USD", "USD"),
+        ("Transactions HKD", "HKD"),
+        ("Transactions AUD", "AUD"),
+    ]
+
+    private static let metaSheets: [(name: String, currency: String, hasTargets: Bool)] = [
+        ("Stock Summary", "SGD", true),
+        ("Stock Summary USD", "USD", true),
+        ("Stock Summary HKD", "HKD", false),
+        ("Summary AUD", "AUD", false),
+    ]
+
+    private static let validTypes: Set<String> = ["Buy", "Sell", "Div"]
+
     // MARK: - Public API
 
-    /// Reads all 4 transaction tabs (in the same order as `import_from_excel_if_empty()`)
-    /// and assigns sequential IDs — serving the same role as SQLite autoincrement IDs.
+    /// Reads all 4 transaction tabs using batchGet and assigns sequential IDs.
     func fetchAllTransactions() async throws -> (transactions: [Transaction], duplicatesRemoved: Int) {
         let nameToTicker = (try? await fetchNameToTickerMap()) ?? [:]
+        let sheetNames = Self.transactionSheets.map { $0.name }
+        let batchData = try await fetchSheetValuesBatch(sheetNames: sheetNames)
+
         var out: [Transaction] = []
         var nextID = 1
-        var lastError: Error?
 
         for (sheetName, currency) in Self.transactionSheets {
-            do {
-                let rows = try await fetchSheetValues(sheetName: sheetName)
-                for row in rows.dropFirst() { // min_row=2: row 0 is header
-                    guard let typeStr = row[safe: 1]?.asString, Self.validTypes.contains(typeStr),
-                          let type = TransactionType(rawValue: typeStr) else { continue }
-                    guard let date = row[safe: 0]?.asDateString,
-                          let name = row[safe: 2]?.asString, !name.isEmpty,
-                          let units = row[safe: 3]?.asDouble,
-                          let price = row[safe: 4]?.asDouble else { continue }
-                    let fees = row[safe: 5]?.asDouble ?? 0
-                    let remarks = row[safe: 18]?.asString
-                    out.append(Transaction(
-                        id: nextID,
-                        date: date,
-                        type: type,
-                        name: name,
-                        ticker: nameToTicker[name],
-                        currency: currency,
-                        units: units,
-                        price: price,
-                        fees: fees,
-                        remarks: remarks,
-                        source: "google_sheets"
-                    ))
-                    nextID += 1
-                }
-            } catch {
-                lastError = error
+            guard let rows = batchData[sheetName], !rows.isEmpty else { continue }
+            for row in rows.dropFirst() { // min_row=2: row 0 is header
+                guard let typeStr = row[safe: 1]?.asString, Self.validTypes.contains(typeStr),
+                      let type = TransactionType(rawValue: typeStr) else { continue }
+                guard let date = row[safe: 0]?.asDateString,
+                      let name = row[safe: 2]?.asString, !name.isEmpty,
+                      let units = row[safe: 3]?.asDouble,
+                      let price = row[safe: 4]?.asDouble else { continue }
+                let fees = row[safe: 5]?.asDouble ?? 0
+                let remarks = row[safe: 18]?.asString
+                out.append(Transaction(
+                    id: nextID,
+                    date: date,
+                    type: type,
+                    name: name,
+                    ticker: nameToTicker[name],
+                    currency: currency,
+                    units: units,
+                    price: price,
+                    fees: fees,
+                    remarks: remarks,
+                    source: "google_sheets"
+                ))
+                nextID += 1
             }
         }
 
-        if out.isEmpty, let lastError {
-            throw lastError
-        }
-
         // Deduplicate by business key: (date, type, name, currency, units, price).
-        // Excludes `remarks` so identical financial rows with differing remarks are treated as duplicates.
         struct TxKey: Hashable {
             let date: String, typeRaw: String, name: String
             let currency: String, units: Double, price: Double
@@ -139,11 +100,13 @@ actor GoogleSheetsClient {
     }
 
     /// Mirror of `_import_stock_meta` — category + tickers + analyst price targets.
-    /// Dictionary key: `"\(name)|\(currency)"`, matching `Holding.id` / `Transaction.positionKey`.
     func fetchStockMeta() async throws -> [String: StockMeta] {
+        let sheetNames = Self.metaSheets.map { $0.name }
+        let batchData = (try? await fetchSheetValuesBatch(sheetNames: sheetNames)) ?? [:]
         var out: [String: StockMeta] = [:]
+
         for (sheetName, currency, hasTargets) in Self.metaSheets {
-            guard let rows = try? await fetchSheetValues(sheetName: sheetName) else { continue }
+            guard let rows = batchData[sheetName], !rows.isEmpty else { continue }
             var inData = false
             for row in rows {
                 guard row.count >= 12 else { continue }
@@ -171,9 +134,9 @@ actor GoogleSheetsClient {
     }
 
     /// Mirror of `parse_history()` (dashboard_server.py).
-    /// Note: skips first 2 header rows (`rows.dropFirst(2)`).
     func fetchPortfolioHistory() async throws -> [HistoryPoint] {
-        guard let rows = try? await fetchSheetValues(sheetName: "Portfolio History"), rows.count > 2 else { return [] }
+        let batchData = (try? await fetchSheetValuesBatch(sheetNames: ["Portfolio History"])) ?? [:]
+        guard let rows = batchData["Portfolio History"], rows.count > 2 else { return [] }
         var out: [HistoryPoint] = []
         for row in rows.dropFirst(2) {
             guard let date = row[safe: 0]?.asDateString, row[safe: 2]?.asDouble != nil else { continue }
@@ -186,7 +149,6 @@ actor GoogleSheetsClient {
                 dividends: row[safe: 6]?.asDouble ?? 0
             ))
         }
-        // Deduplicate by date, keeping the latest entry per date.
         var seen = Set<String>()
         var deduped: [HistoryPoint] = []
         for point in out.reversed() {
@@ -198,13 +160,15 @@ actor GoogleSheetsClient {
         return deduped.reversed()
     }
 
-    // MARK: - name -> ticker (mirror of _stock_name_to_ticker)
+    // MARK: - Helper: name -> ticker
 
     private func fetchNameToTickerMap() async throws -> [String: String] {
         var mapping: [String: String] = [:]
         let sheetNames = ["Stock Summary", "Stock Summary USD", "Stock Summary HKD", "Summary AUD"]
+        let batchData = (try? await fetchSheetValuesBatch(sheetNames: sheetNames)) ?? [:]
+
         for sheetName in sheetNames {
-            guard let rows = try? await fetchSheetValues(sheetName: sheetName) else { continue }
+            guard let rows = batchData[sheetName], !rows.isEmpty else { continue }
             var inData = false
             for row in rows {
                 guard row.count >= 12 else { continue }
@@ -230,7 +194,7 @@ actor GoogleSheetsClient {
         SecureCredentialStore.loadServiceAccount() ?? config.serviceAccount
     }
 
-    // MARK: - Authentication (see JWTSigner.swift)
+    // MARK: - Authentication
 
     private func accessToken() async throws -> String {
         if let token = cachedToken, Date() < tokenExpiry {
@@ -256,40 +220,64 @@ actor GoogleSheetsClient {
         return decoded.access_token
     }
 
-    // MARK: - Raw tab reading
+    // MARK: - Batch & Single Tab Reading
 
-    private struct ValueRange: Decodable { let values: [[SheetCell]]? }
+    private struct BatchValueRangeResponse: Decodable {
+        struct NamedValueRange: Decodable {
+            let range: String?
+            let values: [[SheetCell]]?
+        }
+        let valueRanges: [NamedValueRange]?
+    }
 
-    /// Downloads a full tab with `valueRenderOption=UNFORMATTED_VALUE` so date
-    /// values arrive as serial numbers rather than preformatted strings.
-    private func fetchSheetValues(sheetName: String) async throws -> [[SheetCell]] {
+    /// Downloads multiple tabs in a SINGLE HTTP request using spreadsheets.values.batchGet.
+    /// Drastically reduces network roundtrips and prevents 429 Rate Limit Exceeded errors.
+    private func fetchSheetValuesBatch(sheetNames: [String]) async throws -> [String: [[SheetCell]]] {
         let token = try await accessToken()
-        guard let encodedRange = sheetName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://sheets.googleapis.com/v4/spreadsheets/\(currentSpreadsheetId)/values/\(encodedRange)?valueRenderOption=UNFORMATTED_VALUE")
-        else { throw SheetsError.badResponse }
+        var components = URLComponents(string: "https://sheets.googleapis.com/v4/spreadsheets/\(currentSpreadsheetId)/values:batchGet")!
+        var queryItems = sheetNames.map { URLQueryItem(name: "ranges", value: $0) }
+        queryItems.append(URLQueryItem(name: "valueRenderOption", value: "UNFORMATTED_VALUE"))
+        components.queryItems = queryItems
+
+        guard let url = components.url else { throw SheetsError.badResponse }
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        var (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode == 429 {
+            // Rate limited (429): pause 2 seconds and retry once
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            let (retryData, retryResponse) = try await URLSession.shared.data(for: request)
+            data = retryData
+            response = retryResponse
+        }
+
         guard let http = response as? HTTPURLResponse else { throw SheetsError.badResponse }
 
         if http.statusCode == 200 {
-            let decoded = try JSONDecoder().decode(ValueRange.self, from: data)
-            return decoded.values ?? []
+            let decoded = try JSONDecoder().decode(BatchValueRangeResponse.self, from: data)
+            var result: [String: [[SheetCell]]] = [:]
+            if let ranges = decoded.valueRanges {
+                for (index, item) in ranges.enumerated() {
+                    if index < sheetNames.count {
+                        result[sheetNames[index]] = item.values ?? []
+                    }
+                }
+            }
+            return result
+        } else if http.statusCode == 429 {
+            throw SheetsError.requestFailed("Google Sheets rate limit reached (Quota Exceeded 429). Please wait 1 minute before refreshing again.")
         } else if http.statusCode == 400 || http.statusCode == 404 {
-            // Tab does not exist in this spreadsheet — treat as an empty tab.
-            return []
+            return [:]
         } else {
-            throw SheetsError.requestFailed("\(sheetName): \(String(data: data, encoding: .utf8) ?? "no detail")")
+            throw SheetsError.requestFailed("\(String(data: data, encoding: .utf8) ?? "no detail")")
         }
     }
 }
 
 // MARK: - Dynamic-typed Sheets cell (string/number/bool)
 
-/// Sheets API returns ragged rows where cells may be String, Double, or Bool.
-/// Decodes any of the three and provides convenient accessors.
 enum SheetCell: Decodable {
     case string(String)
     case number(Double)
@@ -299,10 +287,12 @@ enum SheetCell: Decodable {
         let container = try decoder.singleValueContainer()
         if let v = try? container.decode(Double.self) {
             self = .number(v)
+        } else if let v = try? container.decode(String.self) {
+            self = .string(v)
         } else if let v = try? container.decode(Bool.self) {
             self = .bool(v)
         } else {
-            self = .string(try container.decode(String.self))
+            self = .string("")
         }
     }
 
@@ -322,21 +312,22 @@ enum SheetCell: Decodable {
         }
     }
 
-    /// Converts to "yyyy-MM-dd", accepting both Excel-style serial numbers
-    /// (epoch 1899-12-30) and formatted strings.
+    /// Converts Excel serial date (e.g. 45678.5) to ISO-8601 date string YYYY-MM-DD.
     var asDateString: String? {
         switch self {
         case .number(let serial):
-            let epoch = DateComponents(calendar: Calendar(identifier: .gregorian),
-                                        timeZone: TimeZone(identifier: "UTC"),
-                                        year: 1899, month: 12, day: 30).date!
-            let date = epoch.addingTimeInterval(serial * 86400)
-            let f = DateFormatter()
-            f.dateFormat = "yyyy-MM-dd"
-            f.timeZone = TimeZone(identifier: "UTC")
-            return f.string(from: date)
+            let daysSince1900 = Int(floor(serial))
+            var dateComponents = DateComponents()
+            dateComponents.year = 1899
+            dateComponents.month = 12
+            dateComponents.day = 30 + daysSince1900
+            let calendar = Calendar(identifier: .gregorian)
+            guard let date = calendar.date(from: dateComponents) else { return nil }
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd"
+            return fmt.string(from: date)
         case .string(let s):
-            return String(s.prefix(10))
+            return s.trimmingCharacters(in: .whitespacesAndNewlines)
         case .bool:
             return nil
         }
@@ -344,7 +335,6 @@ enum SheetCell: Decodable {
 }
 
 extension Array {
-    /// Safe element access for ragged rows.
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }

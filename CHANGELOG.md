@@ -2,6 +2,25 @@
 
 Registro cronológico de cambios entre sesiones y entre modelos (Claude /
 Gemini Antigravity 2.0). Más reciente arriba. No borrar entradas antiguas.
+## 2026-08-13 — Gemini Antigravity
+
+- **Optimizaciones de API de Google Sheets y solución de cuotas (batchGet API)**:
+  - Implementado `spreadsheets.values.batchGet` en `GoogleSheetsClient.swift` para agrupar las peticiones de todas las pestañas de transacciones, resúmenes e historial en **1 sola petición HTTP por refresco** (en lugar de 9 peticiones separadas).
+  - Añadida pausa asíncrona de 2 segundos y reintento automático en caso de error HTTP 429 (`RATE_LIMIT_EXCEEDED` / `RESOURCE_EXHAUSTED`).
+  - Tratamiento de códigos HTTP 400 y 404 para rangos/pestañas de divisas inexistentes como tablas vacías (`[]`), permitiendo cargar hojas de cálculo que no contengan las 4 divisas opcionales (`Transactions AUD`, `Transactions HKD`, etc.).
+
+- **Corrección de errores de compilación y firma en Xcode**:
+  - Restaurado `init(store: PortfolioStore)` y `@StateObject` en `RootTabView.swift`.
+  - Añadidas las estructuras de modelo de datos faltantes `PortfolioTotals` y `CurrencyBreakdown` en `PortfolioStore.swift`.
+  - Conformado `SheetsError` a `LocalizedError` para mostrar mensajes legibles de error de API de Google en diálogos y alertas de UI.
+
+- **Gestión dinámica de credenciales y mejoras de UX en Ajustes y Onboarding**:
+  - Añadido soporte dinámico en `GoogleSheetsClient.swift` para consultar `SecureCredentialStore.spreadsheetID` y `loadServiceAccount()` en cada petición sin necesidad de reiniciar la app.
+  - Añadido el Spreadsheet ID real por defecto (`1etJBuP0d6O0eRt4FbMdK9egeevG-FguJpDIm83PP0uo`) en `SecureCredentialStore.swift`.
+  - Añadido editor de Spreadsheet ID, visor de email de cuenta de servicio y botón de desconexión/reconexión en `SettingsView.swift`.
+  - Rediseñada `OnboardingCredentialsView.swift` con botón destacado **Guardar y conectar** (`.borderedProminent`) y refresco de jerarquía de vista mediante `sessionID` único en `FlinkFinApp.swift`.
+  - Añadido botón explícito de recarga (↻) en la barra de herramientas de `OverviewView.swift` y refresco automático al cerrar la hoja de Ajustes.
+
 ## 2026-08-12 — Gemini Antigravity
 
 - **Traducción de comentarios de código a inglés**:

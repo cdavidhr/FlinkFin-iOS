@@ -34,10 +34,21 @@ actor GoogleSheetsClient {
         }
     }
 
-    enum SheetsError: Error {
+    enum SheetsError: Error, LocalizedError {
         case tokenExchangeFailed(String)
         case requestFailed(String)
         case badResponse
+
+        var errorDescription: String? {
+            switch self {
+            case .tokenExchangeFailed(let detail):
+                return "Token exchange failed: \(detail)"
+            case .requestFailed(let detail):
+                return "Sheets request failed: \(detail)"
+            case .badResponse:
+                return "Bad response from Google Sheets API"
+            }
+        }
     }
 
     // Tab names — matching gsheets_sync.py / database.py.

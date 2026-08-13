@@ -15,8 +15,11 @@ struct FlinkFinApp: App {
                     spreadsheetId: SecureCredentialStore.spreadsheetID,
                     serviceAccount: account
                 )
-                RootTabView(store: PortfolioStore(sheets: GoogleSheetsClient(config: config)))
-                    .environmentObject(lm)
+                RootTabView(
+                    store: PortfolioStore(sheets: GoogleSheetsClient(config: config)),
+                    onDisconnect: { hasCredentials = false }
+                )
+                .environmentObject(lm)
             } else {
                 OnboardingCredentialsView {
                     hasCredentials = true

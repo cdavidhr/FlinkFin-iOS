@@ -12,11 +12,16 @@ extension Strings {
         "tab.transactions":         "Transacciones",
 
         // MARK: - Settings
-        "settings.title":           "Ajustes",
-        "settings.language":        "Idioma",
-        "settings.language.en":     "Inglés",
-        "settings.language.es":     "Español",
-        "settings.done":            "Listo",
+        "settings.title":              "Ajustes",
+        "settings.language":           "Idioma",
+        "settings.language.en":        "Inglés",
+        "settings.language.es":        "Español",
+        "settings.done":               "Listo",
+        "settings.google_sheets":      "Conexión con Google Sheets",
+        "settings.spreadsheet_id":     "ID de la hoja de cálculo",
+        "settings.save_sheet_id":      "Guardar ID de la hoja",
+        "settings.service_account":     "Cuenta de servicio",
+        "settings.reset_credentials":  "Desconectar / Volver a conectar",
 
         // MARK: - Overview
         "overview.title":           "Resumen",

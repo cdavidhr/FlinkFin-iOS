@@ -8,8 +8,11 @@ struct RootTabView: View {
     @EnvironmentObject private var lm: LanguageManager
     @State private var showSettings = false
 
-    init(store: PortfolioStore) {
+    var onDisconnect: (() -> Void)? = nil
+
+    init(store: PortfolioStore, onDisconnect: (() -> Void)? = nil) {
         _store = StateObject(wrappedValue: store)
+        self.onDisconnect = onDisconnect
     }
 
     var body: some View {
@@ -31,7 +34,7 @@ struct RootTabView: View {
         }
         .environmentObject(store)
         .sheet(isPresented: $showSettings) {
-            SettingsView()
+            SettingsView(onDisconnect: onDisconnect)
         }
         .task {
             await store.refresh()

@@ -12,11 +12,16 @@ enum Strings {
         "tab.transactions":         "Transactions",
 
         // MARK: - Settings
-        "settings.title":           "Settings",
-        "settings.language":        "Language",
-        "settings.language.en":     "English",
-        "settings.language.es":     "Spanish",
-        "settings.done":            "Done",
+        "settings.title":              "Settings",
+        "settings.language":           "Language",
+        "settings.language.en":        "English",
+        "settings.language.es":        "Spanish",
+        "settings.done":               "Done",
+        "settings.google_sheets":      "Google Sheets Connection",
+        "settings.spreadsheet_id":     "Spreadsheet ID",
+        "settings.save_sheet_id":      "Save Spreadsheet ID",
+        "settings.service_account":     "Service Account",
+        "settings.reset_credentials":  "Disconnect / Re-connect",
 
         // MARK: - Overview
         "overview.title":           "Overview",

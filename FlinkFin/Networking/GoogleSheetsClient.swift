@@ -25,6 +25,23 @@ actor GoogleSheetsClient {
         self.config = config
     }
 
+    enum SheetsError: Error, LocalizedError {
+        case tokenExchangeFailed(String)
+        case requestFailed(String)
+        case badResponse
+
+        var errorDescription: String? {
+            switch self {
+            case .tokenExchangeFailed(let detail):
+                return "Token exchange failed: \(detail)"
+            case .requestFailed(let detail):
+                return "Sheets request failed: \(detail)"
+            case .badResponse:
+                return "Bad response from Google Sheets API"
+            }
+        }
+    }
+
     // MARK: - Tab Configurations (matching gsheets_sync.py)
 
     private static let transactionSheets: [(name: String, currency: String)] = [

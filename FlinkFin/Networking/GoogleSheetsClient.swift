@@ -272,11 +272,17 @@ actor GoogleSheetsClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+        guard let http = response as? HTTPURLResponse else { throw SheetsError.badResponse }
+
+        if http.statusCode == 200 {
+            let decoded = try JSONDecoder().decode(ValueRange.self, from: data)
+            return decoded.values ?? []
+        } else if http.statusCode == 400 || http.statusCode == 404 {
+            // Tab does not exist in this spreadsheet — treat as an empty tab.
+            return []
+        } else {
             throw SheetsError.requestFailed("\(sheetName): \(String(data: data, encoding: .utf8) ?? "no detail")")
         }
-        let decoded = try JSONDecoder().decode(ValueRange.self, from: data)
-        return decoded.values ?? []
     }
 }
 

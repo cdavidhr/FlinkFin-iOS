@@ -11,7 +11,7 @@ struct OnboardingCredentialsView: View {
     @State private var spreadsheetId: String = SecureCredentialStore.spreadsheetID
     @State private var isImporting = false
     @State private var errorMessage: String?
-    @State private var importedEmail: String?
+    @State private var importedEmail: String? = SecureCredentialStore.loadServiceAccount()?.client_email
     @State private var pendingJsonString: String?
 
     private var canSave: Bool {
@@ -53,17 +53,18 @@ struct OnboardingCredentialsView: View {
                 }
 
                 Section {
-                    Button {
-                        saveAndConnect()
-                    } label: {
+                    Button(action: saveAndConnect) {
                         HStack {
                             Spacer()
                             Text(lm["onboarding.save"])
-                                .font(.headline.weight(.semibold))
+                                .font(.headline.weight(.bold))
                             Spacer()
                         }
                     }
+                    .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
                 }
 
                 if let errorMessage {

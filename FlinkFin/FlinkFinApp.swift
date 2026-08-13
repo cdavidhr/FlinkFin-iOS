@@ -6,26 +6,33 @@ import SwiftUI
 @main
 struct FlinkFinApp: App {
     @StateObject private var lm = LanguageManager.shared
+    @State private var sessionID = UUID()
     @State private var hasCredentials = SecureCredentialStore.loadServiceAccount() != nil
 
     var body: some Scene {
         WindowGroup {
-            if hasCredentials, let account = SecureCredentialStore.loadServiceAccount() {
-                let config = GoogleSheetsClient.Config(
-                    spreadsheetId: SecureCredentialStore.spreadsheetID,
-                    serviceAccount: account
-                )
-                RootTabView(
-                    store: PortfolioStore(sheets: GoogleSheetsClient(config: config)),
-                    onDisconnect: { hasCredentials = false }
-                )
-                .environmentObject(lm)
-            } else {
-                OnboardingCredentialsView {
-                    hasCredentials = true
+            Group {
+                if hasCredentials, let account = SecureCredentialStore.loadServiceAccount() {
+                    let config = GoogleSheetsClient.Config(
+                        spreadsheetId: SecureCredentialStore.spreadsheetID,
+                        serviceAccount: account
+                    )
+                    RootTabView(
+                        store: PortfolioStore(sheets: GoogleSheetsClient(config: config)),
+                        onDisconnect: {
+                            hasCredentials = false
+                            sessionID = UUID()
+                        }
+                    )
+                } else {
+                    OnboardingCredentialsView {
+                        hasCredentials = true
+                        sessionID = UUID()
+                    }
                 }
-                .environmentObject(lm)
             }
+            .id(sessionID)
+            .environmentObject(lm)
         }
     }
 }

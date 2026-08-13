@@ -385,3 +385,23 @@ final class PortfolioStore: ObservableObject {
         return byCurrency.values.sorted { $0.currency < $1.currency }
     }
 }
+
+// MARK: - Aggregate Result Models
+
+struct PortfolioTotals: Codable, Equatable {
+    var valueSGD: Double
+    var costSGD: Double
+    var glSGD: Double
+    var glPct: Double
+}
+
+struct CurrencyBreakdown: Codable, Equatable, Identifiable {
+    var currency: String
+    var value: Double
+    var cost: Double
+    var gl: Double
+    var count: Int
+    var fxRate: Double
+
+    var id: String { currency }
+}

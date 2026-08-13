@@ -83,7 +83,7 @@ actor GoogleSheetsClient {
         var out: [Transaction] = []
         var nextID = 1
         for (sheetName, currency) in Self.transactionSheets {
-            let rows = try await fetchSheetValues(sheetName: sheetName)
+            guard let rows = try? await fetchSheetValues(sheetName: sheetName) else { continue }
             for row in rows.dropFirst() { // min_row=2: row 0 is header
                 guard let typeStr = row[safe: 1]?.asString, Self.validTypes.contains(typeStr),
                       let type = TransactionType(rawValue: typeStr) else { continue }

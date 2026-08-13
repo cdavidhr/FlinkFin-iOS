@@ -147,6 +147,9 @@ final class PortfolioStore: ObservableObject {
                 self.dailyChangePct = nil
             }
         } catch {
+            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                return
+            }
             errorMessage = error.localizedDescription
         }
     }
@@ -156,6 +159,9 @@ final class PortfolioStore: ObservableObject {
         do {
             self.history = try await sheets.fetchPortfolioHistory().sorted { $0.date < $1.date }
         } catch {
+            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                return
+            }
             errorMessage = error.localizedDescription
         }
     }

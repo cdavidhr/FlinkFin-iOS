@@ -79,35 +79,45 @@ actor GoogleSheetsClient {
     /// Reads all 4 transaction tabs (in the same order as `import_from_excel_if_empty()`)
     /// and assigns sequential IDs — serving the same role as SQLite autoincrement IDs.
     func fetchAllTransactions() async throws -> (transactions: [Transaction], duplicatesRemoved: Int) {
-        let nameToTicker = try await fetchNameToTickerMap()
+        let nameToTicker = (try? await fetchNameToTickerMap()) ?? [:]
         var out: [Transaction] = []
         var nextID = 1
+        var lastError: Error?
+
         for (sheetName, currency) in Self.transactionSheets {
-            guard let rows = try? await fetchSheetValues(sheetName: sheetName) else { continue }
-            for row in rows.dropFirst() { // min_row=2: row 0 is header
-                guard let typeStr = row[safe: 1]?.asString, Self.validTypes.contains(typeStr),
-                      let type = TransactionType(rawValue: typeStr) else { continue }
-                guard let date = row[safe: 0]?.asDateString,
-                      let name = row[safe: 2]?.asString, !name.isEmpty,
-                      let units = row[safe: 3]?.asDouble,
-                      let price = row[safe: 4]?.asDouble else { continue }
-                let fees = row[safe: 5]?.asDouble ?? 0
-                let remarks = row[safe: 18]?.asString
-                out.append(Transaction(
-                    id: nextID,
-                    date: date,
-                    type: type,
-                    name: name,
-                    ticker: nameToTicker[name],
-                    currency: currency,
-                    units: units,
-                    price: price,
-                    fees: fees,
-                    remarks: remarks,
-                    source: "google_sheets"
-                ))
-                nextID += 1
+            do {
+                let rows = try await fetchSheetValues(sheetName: sheetName)
+                for row in rows.dropFirst() { // min_row=2: row 0 is header
+                    guard let typeStr = row[safe: 1]?.asString, Self.validTypes.contains(typeStr),
+                          let type = TransactionType(rawValue: typeStr) else { continue }
+                    guard let date = row[safe: 0]?.asDateString,
+                          let name = row[safe: 2]?.asString, !name.isEmpty,
+                          let units = row[safe: 3]?.asDouble,
+                          let price = row[safe: 4]?.asDouble else { continue }
+                    let fees = row[safe: 5]?.asDouble ?? 0
+                    let remarks = row[safe: 18]?.asString
+                    out.append(Transaction(
+                        id: nextID,
+                        date: date,
+                        type: type,
+                        name: name,
+                        ticker: nameToTicker[name],
+                        currency: currency,
+                        units: units,
+                        price: price,
+                        fees: fees,
+                        remarks: remarks,
+                        source: "google_sheets"
+                    ))
+                    nextID += 1
+                }
+            } catch {
+                lastError = error
             }
+        }
+
+        if out.isEmpty, let lastError {
+            throw lastError
         }
 
         // Deduplicate by business key: (date, type, name, currency, units, price).

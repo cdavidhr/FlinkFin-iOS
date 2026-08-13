@@ -211,15 +211,25 @@ actor GoogleSheetsClient {
         return mapping
     }
 
+    private var currentSpreadsheetId: String {
+        let stored = SecureCredentialStore.spreadsheetID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return stored.isEmpty ? config.spreadsheetId : stored
+    }
+
+    private var currentServiceAccount: GoogleServiceAccountJWT.ServiceAccountKey {
+        SecureCredentialStore.loadServiceAccount() ?? config.serviceAccount
+    }
+
     // MARK: - Authentication (see JWTSigner.swift)
 
     private func accessToken() async throws -> String {
         if let token = cachedToken, Date() < tokenExpiry {
             return token
         }
-        let jwt = try GoogleServiceAccountJWT.makeSignedJWT(serviceAccount: config.serviceAccount)
+        let account = currentServiceAccount
+        let jwt = try GoogleServiceAccountJWT.makeSignedJWT(serviceAccount: account)
 
-        var request = URLRequest(url: URL(string: config.serviceAccount.token_uri)!)
+        var request = URLRequest(url: URL(string: account.token_uri)!)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let body = "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=\(jwt)"
@@ -245,7 +255,7 @@ actor GoogleSheetsClient {
     private func fetchSheetValues(sheetName: String) async throws -> [[SheetCell]] {
         let token = try await accessToken()
         guard let encodedRange = sheetName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://sheets.googleapis.com/v4/spreadsheets/\(config.spreadsheetId)/values/\(encodedRange)?valueRenderOption=UNFORMATTED_VALUE")
+              let url = URL(string: "https://sheets.googleapis.com/v4/spreadsheets/\(currentSpreadsheetId)/values/\(encodedRange)?valueRenderOption=UNFORMATTED_VALUE")
         else { throw SheetsError.badResponse }
 
         var request = URLRequest(url: url)

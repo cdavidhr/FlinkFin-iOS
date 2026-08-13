@@ -57,7 +57,7 @@ enum SecureCredentialStore {
     // MARK: - Spreadsheet ID (Non-secret identifier)
 
     private static let sheetIDDefaultsKey = "portfolioDashboard.spreadsheetId"
-    private static let defaultSpreadsheetID = ""  // Enter your spreadsheet ID here or via the app's onboarding screen
+    private static let defaultSpreadsheetID = "1etJBuP0d6O0eRt4FbMdK9egeevG-FguJpDIm83PP0uo"
 
     static var spreadsheetID: String {
         get { UserDefaults.standard.string(forKey: sheetIDDefaultsKey) ?? defaultSpreadsheetID }

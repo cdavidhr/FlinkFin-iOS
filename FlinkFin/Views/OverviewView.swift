@@ -31,12 +31,31 @@ struct OverviewView: View {
             .onChange(of: store.duplicatesFoundOnLastRefresh) {
                 duplicatesBannerDismissed = false
             }
+            .onChange(of: showSettings) { _, isShowing in
+                if !isShowing {
+                    Task {
+                        await store.refresh()
+                        await store.refreshHistory()
+                    }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
+                    HStack(spacing: 16) {
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        Button {
+                            Task {
+                                await store.refresh()
+                                await store.refreshHistory()
+                            }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .disabled(store.isLoading)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {

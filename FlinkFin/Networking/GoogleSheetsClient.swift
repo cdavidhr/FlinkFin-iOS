@@ -9,13 +9,10 @@ actor GoogleSheetsClient {
         var serviceAccount: GoogleServiceAccountJWT.ServiceAccountKey
     }
 
-    struct StockMeta {
-        let ticker: String?
-        let category: String
-        let avgTarget: Double?
-        let minTarget: Double?
-        let maxTarget: Double?
-    }
+    // Note: stock metadata uses the shared `StockMeta` model (PortfolioEngine.swift),
+    // not a locally-nested type — `PortfolioEngine.computeHoldings(meta:)` expects
+    // that exact type, and a same-named nested type here would silently shadow it
+    // and fail to type-check at the call site.
 
     private let config: Config
     private var cachedToken: String?
@@ -62,12 +59,47 @@ actor GoogleSheetsClient {
 
     // MARK: - Public API
 
-    /// Reads all 4 transaction tabs using batchGet and assigns sequential IDs.
-    func fetchAllTransactions() async throws -> (transactions: [Transaction], duplicatesRemoved: Int) {
-        let nameToTicker = (try? await fetchNameToTickerMap()) ?? [:]
-        let sheetNames = Self.transactionSheets.map { $0.name }
-        let batchData = try await fetchSheetValuesBatch(sheetNames: sheetNames)
+    /// Fetches the transaction tabs and the stock-meta tabs using TWO batchGet HTTP
+    /// requests (kept separate on purpose — see note below), then derives
+    /// transactions (deduped, sequential IDs) and stock metadata
+    /// (ticker/category/analyst targets) from those two responses.
+    ///
+    /// Previously `PortfolioStore.refresh()` triggered 3 separate batchGet calls per
+    /// refresh: one for the transaction tabs, and TWO redundant calls hitting the
+    /// exact same 4 meta tabs (one to build the name→ticker map, one for stock meta).
+    /// That doubled the Sheets read-quota cost of every refresh and was the direct
+    /// cause of the "429 RATE_LIMIT_EXCEEDED" error on Transactions AUD at startup.
+    /// This fetches the meta tabs only once (down to 2 requests/refresh) but keeps
+    /// transactions and meta as separate batchGet calls: Sheets' batchGet fails the
+    /// WHOLE request with a single 400 if even one requested tab doesn't exist, and
+    /// `fetchSheetValuesBatch` treats that 400 as "no data" rather than an error —
+    /// merging all 8 tabs into one call (an earlier version of this fix) meant a
+    /// single missing optional tab (e.g. no "Summary AUD") silently zeroed out
+    /// transactions too, showing "no data" instead of loading anything. Keeping the
+    /// two groups separate means a missing tab in one group no longer blanks out
+    /// the other.
+    func fetchPortfolioData() async throws -> (transactions: [Transaction], duplicatesRemoved: Int, stockMeta: [String: StockMeta]) {
+        let txSheetNames = Self.transactionSheets.map { $0.name }
+        let metaSheetNames = Self.metaSheets.map { $0.name }
 
+        async let txBatchTask = fetchSheetValuesBatch(sheetNames: txSheetNames)
+        async let metaBatchTask = fetchSheetValuesBatch(sheetNames: metaSheetNames)
+        let txData = try await txBatchTask
+        let metaData = (try? await metaBatchTask) ?? [:]
+
+        let nameToTicker = Self.buildNameToTickerMap(from: metaData)
+        let stockMeta = Self.buildStockMeta(from: metaData)
+        let (transactions, duplicatesRemoved) = Self.buildTransactions(from: txData, nameToTicker: nameToTicker)
+
+        return (transactions, duplicatesRemoved, stockMeta)
+    }
+
+    // MARK: - Helpers: parsing batchGet results (pure, no network I/O)
+
+    private static func buildTransactions(
+        from batchData: [String: [[SheetCell]]],
+        nameToTicker: [String: String]
+    ) -> (transactions: [Transaction], duplicatesRemoved: Int) {
         var out: [Transaction] = []
         var nextID = 1
 
@@ -117,9 +149,7 @@ actor GoogleSheetsClient {
     }
 
     /// Mirror of `_import_stock_meta` — category + tickers + analyst price targets.
-    func fetchStockMeta() async throws -> [String: StockMeta] {
-        let sheetNames = Self.metaSheets.map { $0.name }
-        let batchData = (try? await fetchSheetValuesBatch(sheetNames: sheetNames)) ?? [:]
+    private static func buildStockMeta(from batchData: [String: [[SheetCell]]]) -> [String: StockMeta] {
         var out: [String: StockMeta] = [:]
 
         for (sheetName, currency, hasTargets) in Self.metaSheets {
@@ -150,6 +180,28 @@ actor GoogleSheetsClient {
         return out
     }
 
+    private static func buildNameToTickerMap(from batchData: [String: [[SheetCell]]]) -> [String: String] {
+        var mapping: [String: String] = [:]
+        let sheetNames = Self.metaSheets.map { $0.name }
+
+        for sheetName in sheetNames {
+            guard let rows = batchData[sheetName], !rows.isEmpty else { continue }
+            var inData = false
+            for row in rows {
+                guard row.count >= 12 else { continue }
+                if let marker = row[safe: 1]?.asString, marker == "Stock Name" || marker == "º" {
+                    inData = true
+                    continue
+                }
+                guard inData, let name = row[safe: 1]?.asString, !name.isEmpty else { continue }
+                if mapping[name] == nil, let ticker = row[safe: 4]?.asString, !ticker.isEmpty {
+                    mapping[name] = ticker
+                }
+            }
+        }
+        return mapping
+    }
+
     /// Mirror of `parse_history()` (dashboard_server.py).
     func fetchPortfolioHistory() async throws -> [HistoryPoint] {
         let batchData = (try? await fetchSheetValuesBatch(sheetNames: ["Portfolio History"])) ?? [:]
@@ -175,31 +227,6 @@ actor GoogleSheetsClient {
             }
         }
         return deduped.reversed()
-    }
-
-    // MARK: - Helper: name -> ticker
-
-    private func fetchNameToTickerMap() async throws -> [String: String] {
-        var mapping: [String: String] = [:]
-        let sheetNames = ["Stock Summary", "Stock Summary USD", "Stock Summary HKD", "Summary AUD"]
-        let batchData = (try? await fetchSheetValuesBatch(sheetNames: sheetNames)) ?? [:]
-
-        for sheetName in sheetNames {
-            guard let rows = batchData[sheetName], !rows.isEmpty else { continue }
-            var inData = false
-            for row in rows {
-                guard row.count >= 12 else { continue }
-                if let marker = row[safe: 1]?.asString, marker == "Stock Name" || marker == "º" {
-                    inData = true
-                    continue
-                }
-                guard inData, let name = row[safe: 1]?.asString, !name.isEmpty else { continue }
-                if mapping[name] == nil, let ticker = row[safe: 4]?.asString, !ticker.isEmpty {
-                    mapping[name] = ticker
-                }
-            }
-        }
-        return mapping
     }
 
     private var currentSpreadsheetId: String {
@@ -290,6 +317,19 @@ actor GoogleSheetsClient {
         } else {
             throw SheetsError.requestFailed("\(String(data: data, encoding: .utf8) ?? "no detail")")
         }
+    }
+}
+
+extension GoogleSheetsClient.Config {
+    static var preview: GoogleSheetsClient.Config {
+        GoogleSheetsClient.Config(
+            spreadsheetId: "preview-spreadsheet-id",
+            serviceAccount: GoogleServiceAccountJWT.ServiceAccountKey(
+                client_email: "preview@example.iam.gserviceaccount.com",
+                private_key: "-----BEGIN PRIVATE KEY-----\npreview\n-----END PRIVATE KEY-----",
+                token_uri: "https://oauth2.googleapis.com/token"
+            )
+        )
     }
 }
 

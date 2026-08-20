@@ -65,19 +65,29 @@ final class PortfolioStore: ObservableObject {
         self.sheets = sheets
     }
 
+    /// Guards against overlapping refresh() calls (e.g. RootTabView's startup .task
+    /// racing with a manual pull-to-refresh or the toolbar reload button). Each
+    /// refresh() already costs 1 Sheets batchGet request; running two at once used
+    /// to double that and contributed to hitting the per-minute read quota (429).
+    private var isRefreshing = false
+
     /// Reloads transactions + metadata from Sheets, recomputes holdings,
     /// fetches live prices/FX/sparklines from Yahoo, and builds recommendations.
     func refresh() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            isRefreshing = false
+        }
 
         do {
-            async let txsResult = sheets.fetchAllTransactions()
-            async let meta = sheets.fetchStockMeta()
-            let (txFetched, stockMeta) = try await (txsResult, meta)
-            let fetchedTransactions = txFetched.transactions
-            self.duplicatesFoundOnLastRefresh = txFetched.duplicatesRemoved
+            let portfolioData = try await sheets.fetchPortfolioData()
+            let stockMeta = portfolioData.stockMeta
+            let fetchedTransactions = portfolioData.transactions
+            self.duplicatesFoundOnLastRefresh = portfolioData.duplicatesRemoved
             self.transactions = fetchedTransactions
 
             let baseHoldings = PortfolioEngine.computeHoldings(transactions: fetchedTransactions, meta: stockMeta)
